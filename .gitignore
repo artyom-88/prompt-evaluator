@@ -1,0 +1,7 @@
+.codex
+.env
+.env.local
+.idea
+coverage
+dist
+node_modules
