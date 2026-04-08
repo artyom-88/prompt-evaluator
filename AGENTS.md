@@ -16,7 +16,7 @@ This file is for AI coding agents. For human-facing setup, commands, and archite
 - Prefer route-based dynamic lazy imports in `src/app/AppRoutes.tsx` for page-level code splitting.
 - Keep reusable shared UI primitives directly under `src/common/components/`.
 - Keep shared domain types in feature `*Types.ts` files. For example, workspace-wide domain types belong in `src/features/workspace/workspaceTypes.ts`.
-- Keep direct workspace API access in `src/features/workspace/workspaceApi.ts` and localStorage persistence in `src/features/workspace/workspaceStore.ts`.
+- Keep Jotai-backed workspace state in `src/features/workspace/workspaceState.ts` and localStorage persistence utilities in `src/features/workspace/workspaceStore.ts`.
 - Keep feature logic in the owning folder under `src/features/`: `anthropic`, `evaluations`, `prompts`, `reports`, `scenarios`, `test-data`, or `workspace`.
 - Do not create broad `services/` or `types/` folders unless a module is genuinely cross-feature and cannot fit `workspace` or `common`.
 - Use clear feature/store naming in filenames and docs.
@@ -33,6 +33,8 @@ This file is for AI coding agents. For human-facing setup, commands, and archite
 - Keep prompt versions immutable; editing a prompt creates a new version.
 - Keep Anthropic browser calls local-dev only; non-dev mode must fail closed.
 - Keep generated test data validation backed by the local `validate_test_data` tool and AJV.
+- Keep evaluation logic app-owned. Do not add user-configurable rubric/scoring controls back into the UI.
+- Use the scenario field builder rather than raw schema editing for authoring record structure.
 - Use Zod for app-owned runtime payload validation such as localStorage and import/export files.
 
 ## Verification

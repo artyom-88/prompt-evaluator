@@ -5,33 +5,24 @@ import { Link, useParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader } from '@/common/components/Card';
 import { Label } from '@/common/components/Form';
 import { formatPercent, formatScore } from '@/common/utils';
-import { workspaceApi } from '@/features/workspace/workspaceApi';
-import type { EvaluationRun, PromptVersion, Scenario } from '@/features/workspace/workspaceTypes';
+import { useEvaluationRuns, usePromptVersions, useScenario } from '@/features/workspace/workspaceState';
+import type { EvaluationRun } from '@/features/workspace/workspaceTypes';
 
 const latestRunForVersion = (runs: EvaluationRun[], versionId: string): EvaluationRun | undefined =>
   runs.find((run) => run.promptVersionId === versionId);
 
 export const CompareVersionsPage = (): ReactElement => {
   const { scenarioId = '' } = useParams();
-  const [scenario, setScenario] = useState<Scenario>();
-  const [versions, setVersions] = useState<PromptVersion[]>([]);
-  const [runs, setRuns] = useState<EvaluationRun[]>([]);
+  const scenario = useScenario(scenarioId);
+  const versions = usePromptVersions(scenarioId);
+  const runs = useEvaluationRuns(scenarioId);
   const [leftVersionId, setLeftVersionId] = useState('');
   const [rightVersionId, setRightVersionId] = useState('');
 
   useEffect(() => {
-    void Promise.all([
-      workspaceApi.getScenario(scenarioId),
-      workspaceApi.listPromptVersions(scenarioId),
-      workspaceApi.listEvaluationRuns(scenarioId),
-    ]).then(([nextScenario, nextVersions, nextRuns]) => {
-      setScenario(nextScenario);
-      setVersions(nextVersions);
-      setRuns(nextRuns);
-      setLeftVersionId((current) => current || nextVersions[1]?.id || nextVersions[0]?.id || '');
-      setRightVersionId((current) => current || nextVersions[0]?.id || '');
-    });
-  }, [scenarioId]);
+    setLeftVersionId((current) => current || versions[1]?.id || versions[0]?.id || '');
+    setRightVersionId((current) => current || versions[0]?.id || '');
+  }, [versions]);
 
   const leftRun = useMemo(() => latestRunForVersion(runs, leftVersionId), [leftVersionId, runs]);
   const rightRun = useMemo(() => latestRunForVersion(runs, rightVersionId), [rightVersionId, runs]);

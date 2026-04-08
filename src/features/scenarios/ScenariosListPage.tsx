@@ -1,11 +1,17 @@
 import type { ChangeEvent, ReactElement } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { Badge } from '@/common/components/Badge';
 import { Button } from '@/common/components/Button';
 import { Card, CardContent, CardHeader } from '@/common/components/Card';
-import { workspaceApi } from '@/features/workspace/workspaceApi';
+import {
+  useExportScenarioBundle,
+  useExportWorkspace,
+  useImportScenarioBundle,
+  useImportWorkspace,
+  useWorkspaceScenarios,
+} from '@/features/workspace/workspaceState';
 import type { Scenario } from '@/features/workspace/workspaceTypes';
 
 const downloadJson = (filename: string, payload: unknown): void => {
@@ -29,28 +35,28 @@ const slugify = (value: string): string =>
 
 export const ScenariosListPage = (): ReactElement => {
   const navigate = useNavigate();
-  const [scenarios, setScenarios] = useState<Scenario[]>([]);
+  const scenarios = useWorkspaceScenarios();
+  const exportWorkspace = useExportWorkspace();
+  const importWorkspace = useImportWorkspace();
+  const exportScenarioBundle = useExportScenarioBundle();
+  const importScenarioBundle = useImportScenarioBundle();
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const scenarioImportRef = useRef<HTMLInputElement>(null);
   const workspaceImportRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    void workspaceApi.listScenarios().then(setScenarios);
-  }, []);
-
   const readJsonFile = async (file: File): Promise<unknown> => JSON.parse(await file.text());
 
   const handleExportWorkspace = async (): Promise<void> => {
     setError('');
-    const payload = await workspaceApi.exportWorkspace();
+    const payload = exportWorkspace();
     downloadJson(`prompt-evaluator-workspace-${new Date().toISOString().slice(0, 10)}.json`, payload);
     setNotice('Workspace backup exported.');
   };
 
   const handleExportScenario = async (scenario: Scenario): Promise<void> => {
     setError('');
-    const payload = await workspaceApi.exportScenarioBundle(scenario.id);
+    const payload = exportScenarioBundle(scenario.id);
     downloadJson(`${slugify(scenario.title) || 'scenario'}-bundle.json`, payload);
     setNotice(`Scenario "${scenario.title}" exported.`);
   };
@@ -66,8 +72,7 @@ export const ScenariosListPage = (): ReactElement => {
     setError('');
     setNotice('');
     try {
-      const importedScenario = await workspaceApi.importScenarioBundle(await readJsonFile(file));
-      setScenarios(await workspaceApi.listScenarios());
+      const importedScenario = importScenarioBundle(await readJsonFile(file));
       setNotice(`Scenario "${importedScenario.title}" imported.`);
       navigate(`/scenarios/${importedScenario.id}/prompts`);
     } catch (importError) {
@@ -96,8 +101,7 @@ export const ScenariosListPage = (): ReactElement => {
         return;
       }
 
-      await workspaceApi.importWorkspace(payload);
-      setScenarios(await workspaceApi.listScenarios());
+      importWorkspace(payload);
       setNotice('Workspace backup imported.');
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : 'Failed to import the workspace backup.');
@@ -142,8 +146,8 @@ export const ScenariosListPage = (): ReactElement => {
           <CardContent className='py-10 text-center'>
             <h2 className='text-xl font-semibold'>No scenarios yet</h2>
             <p className='mx-auto mt-2 max-w-2xl text-stone-600'>
-              Start with the guided wizard. It will capture the scenario, JSON Schema, test data, evaluation rubric, and initial
-              prompt.
+              Start with the guided wizard. It will capture the scenario, input fields, generated schema preview, test data, and
+              initial prompt.
             </p>
             <Link
               className='mt-6 inline-flex rounded-md bg-stone-950 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800'

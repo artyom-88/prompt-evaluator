@@ -5,6 +5,7 @@ import {
   DEFAULT_TEST_DATA_MAX_VALIDATION_ATTEMPTS,
   parseTestDataMaxValidationAttempts,
   resolveAnthropicClientConfig,
+  toAnthropicClientError,
 } from '@/features/anthropic/anthropicClient';
 
 describe('resolveAnthropicClientConfig', () => {
@@ -58,5 +59,11 @@ describe('resolveAnthropicClientConfig', () => {
     expect(parseTestDataMaxValidationAttempts('0')).toBe(DEFAULT_TEST_DATA_MAX_VALIDATION_ATTEMPTS);
     expect(parseTestDataMaxValidationAttempts('-1')).toBe(DEFAULT_TEST_DATA_MAX_VALIDATION_ATTEMPTS);
     expect(parseTestDataMaxValidationAttempts('abc')).toBe(DEFAULT_TEST_DATA_MAX_VALIDATION_ATTEMPTS);
+  });
+
+  it('turns Anthropic 401 responses into a clearer auth error', () => {
+    const error = Object.assign(new Error('unauthorized'), { status: 401 });
+
+    expect(toAnthropicClientError(error).message).toContain('VITE_ANTHROPIC_API_KEY');
   });
 });

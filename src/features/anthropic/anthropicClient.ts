@@ -8,13 +8,14 @@ export const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5';
 export const DEFAULT_TEST_DATA_MAX_VALIDATION_ATTEMPTS = 2;
 
 const fallbackEnv: AnthropicRuntimeEnv = {
-  anthropicApiKey: '',
-  anthropicModel: DEFAULT_ANTHROPIC_MODEL,
-  testDataMaxValidationAttempts: `${DEFAULT_TEST_DATA_MAX_VALIDATION_ATTEMPTS}`,
+  anthropicApiKey: import.meta.env.VITE_ANTHROPIC_API_KEY ?? '',
+  anthropicModel: import.meta.env.VITE_ANTHROPIC_MODEL ?? DEFAULT_ANTHROPIC_MODEL,
+  testDataMaxValidationAttempts:
+    import.meta.env.VITE_ANTHROPIC_TEST_DATA_MAX_VALIDATION_ATTEMPTS ?? `${DEFAULT_TEST_DATA_MAX_VALIDATION_ATTEMPTS}`,
   isDev: import.meta.env.DEV,
 };
 
-const runtimeEnv = (): AnthropicRuntimeEnv => (typeof __APP_ENV__ !== 'undefined' && __APP_ENV__ ? __APP_ENV__ : fallbackEnv);
+const runtimeEnv = (): AnthropicRuntimeEnv => fallbackEnv;
 
 export const parseTestDataMaxValidationAttempts = (value: string | number | undefined): number => {
   const parsed = Number(value);
@@ -34,6 +35,20 @@ export const resolveAnthropicClientConfig = (env: AnthropicRuntimeEnv = runtimeE
   };
 };
 
+export const toAnthropicClientError = (error: unknown): Error => {
+  if (error instanceof Error && 'status' in error && error.status === 401) {
+    return new Error(
+      'Anthropic API authentication failed (401 Unauthorized). Check VITE_ANTHROPIC_API_KEY in your local .env and restart pnpm dev after changing env values.',
+    );
+  }
+
+  if (error instanceof Error) {
+    return error;
+  }
+
+  return new Error('Anthropic request failed.');
+};
+
 const collectText = (content: ContentBlock[]): string =>
   content
     .filter((block) => block.type === 'text')
@@ -49,7 +64,7 @@ export const createAnthropicTextClient = (env: AnthropicRuntimeEnv = runtimeEnv(
   if (!config.enabled) {
     throw new Error(
       config.dangerouslyAllowBrowser
-        ? 'Missing Anthropic API key. Set ANTHROPIC_API_KEY in .env for local development.'
+        ? 'Missing Anthropic API key. Set VITE_ANTHROPIC_API_KEY in .env for local development.'
         : 'Anthropic browser calls are disabled outside the Vite dev server.',
     );
   }
@@ -63,15 +78,19 @@ export const createAnthropicTextClient = (env: AnthropicRuntimeEnv = runtimeEnv(
     model: config.model,
     testDataMaxValidationAttempts: config.testDataMaxValidationAttempts,
     async complete({ system, prompt, maxTokens = 1200, signal }) {
-      const response = await client.messages.create(
-        {
-          model: config.model,
-          max_tokens: maxTokens,
-          system,
-          messages: [{ role: 'user', content: prompt }],
-        },
-        { signal },
-      );
+      const response = await client.messages
+        .create(
+          {
+            model: config.model,
+            max_tokens: maxTokens,
+            system,
+            messages: [{ role: 'user', content: prompt }],
+          },
+          { signal },
+        )
+        .catch((error: unknown) => {
+          throw toAnthropicClientError(error);
+        });
 
       return collectText(response.content);
     },
@@ -84,21 +103,26 @@ export const createAnthropicTextClient = (env: AnthropicRuntimeEnv = runtimeEnv(
           throw signal.reason ?? new DOMException('The request was aborted.', 'AbortError');
         }
 
-        const response = await client.messages.create(
-          {
-            model: config.model,
-            max_tokens: maxTokens,
-            system,
-            messages,
-            tool_choice: { type: 'auto', disable_parallel_tool_use: true },
-            tools: tools.map((tool) => ({
-              name: tool.name,
-              description: tool.description,
-              input_schema: tool.inputSchema,
-            })),
-          },
-          { signal },
-        );
+        const response = await client.messages
+          .create(
+            {
+              model: config.model,
+              max_tokens: maxTokens,
+              system,
+              messages,
+              tool_choice: { type: 'auto', disable_parallel_tool_use: true },
+              tools: tools.map((tool) => ({
+                name: tool.name,
+                description: tool.description,
+                input_schema: tool.inputSchema,
+              })),
+            },
+            { signal },
+          )
+          .catch((error: unknown) => {
+            throw toAnthropicClientError(error);
+          });
+
         const toolUses = response.content.filter(isToolUseBlock);
 
         if (toolUses.length === 0) {

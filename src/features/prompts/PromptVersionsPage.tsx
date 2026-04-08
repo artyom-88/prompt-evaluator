@@ -1,30 +1,16 @@
 import type { ReactElement } from 'react';
-import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { Badge } from '@/common/components/Badge';
 import { Card, CardContent, CardHeader } from '@/common/components/Card';
 import { formatPercent, formatScore } from '@/common/utils';
-import { workspaceApi } from '@/features/workspace/workspaceApi';
-import type { EvaluationRun, PromptVersion, Scenario } from '@/features/workspace/workspaceTypes';
+import { useEvaluationRuns, usePromptVersions, useScenario } from '@/features/workspace/workspaceState';
 
 export const PromptVersionsPage = (): ReactElement => {
   const { scenarioId = '' } = useParams();
-  const [scenario, setScenario] = useState<Scenario>();
-  const [versions, setVersions] = useState<PromptVersion[]>([]);
-  const [runs, setRuns] = useState<EvaluationRun[]>([]);
-
-  useEffect(() => {
-    void Promise.all([
-      workspaceApi.getScenario(scenarioId),
-      workspaceApi.listPromptVersions(scenarioId),
-      workspaceApi.listEvaluationRuns(scenarioId),
-    ]).then(([nextScenario, nextVersions, nextRuns]) => {
-      setScenario(nextScenario);
-      setVersions(nextVersions);
-      setRuns(nextRuns);
-    });
-  }, [scenarioId]);
+  const scenario = useScenario(scenarioId);
+  const versions = usePromptVersions(scenarioId);
+  const runs = useEvaluationRuns(scenarioId);
 
   if (!scenario) {
     return <p className='text-sm text-stone-600'>Scenario not found.</p>;

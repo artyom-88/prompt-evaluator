@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { Button } from '@/common/components/Button';
@@ -7,17 +7,25 @@ import { Card, CardContent, CardHeader } from '@/common/components/Card';
 import { Field, Input, Label, Textarea } from '@/common/components/Form';
 import { createAnthropicTextClient } from '@/features/anthropic/anthropicClient';
 import { evaluatePromptVersion } from '@/features/evaluations/evaluationEngine';
-import { findDataReferences } from '@/features/prompts/promptTemplate';
+import { findDataReferences, hasDataReference } from '@/features/prompts/promptTemplate';
 import { ReportTable } from '@/features/reports/ReportTable';
-import { workspaceApi } from '@/features/workspace/workspaceApi';
-import type { EvaluationRun, PromptVersion, Scenario } from '@/features/workspace/workspaceTypes';
+import { EXPECTED_RESULT_FIELD_NAME, getPromptReferenceFieldNames } from '@/features/test-data/testDataSchema';
+import {
+  useCreateEvaluationRun,
+  useCreatePromptVersion,
+  useEvaluationRunsForPrompt,
+  usePromptVersion,
+  useScenario,
+} from '@/features/workspace/workspaceState';
 
 export const PromptDetailPage = (): ReactElement => {
   const { scenarioId = '', promptVersionId = '' } = useParams();
   const navigate = useNavigate();
-  const [scenario, setScenario] = useState<Scenario>();
-  const [promptVersion, setPromptVersion] = useState<PromptVersion>();
-  const [runs, setRuns] = useState<EvaluationRun[]>([]);
+  const scenario = useScenario(scenarioId);
+  const promptVersion = usePromptVersion(promptVersionId);
+  const runs = useEvaluationRunsForPrompt(promptVersionId);
+  const createPromptVersion = useCreatePromptVersion();
+  const createEvaluationRun = useCreateEvaluationRun();
   const [title, setTitle] = useState('');
   const [promptText, setPromptText] = useState('');
   const [notes, setNotes] = useState('');
@@ -27,21 +35,17 @@ export const PromptDetailPage = (): ReactElement => {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    void Promise.all([
-      workspaceApi.getScenario(scenarioId),
-      workspaceApi.getPromptVersion(promptVersionId),
-      workspaceApi.listEvaluationRunsForPrompt(promptVersionId),
-    ]).then(([nextScenario, nextPromptVersion, nextRuns]) => {
-      setScenario(nextScenario);
-      setPromptVersion(nextPromptVersion);
-      setRuns(nextRuns);
-      if (nextPromptVersion) {
-        setTitle(nextPromptVersion.title);
-        setPromptText(nextPromptVersion.promptText);
-        setNotes(nextPromptVersion.notes);
-      }
-    });
-  }, [promptVersionId, scenarioId]);
+    if (promptVersion) {
+      setTitle(promptVersion.title);
+      setPromptText(promptVersion.promptText);
+      setNotes(promptVersion.notes);
+    }
+  }, [promptVersion]);
+
+  const availablePromptReferences = useMemo(
+    () => (scenario ? getPromptReferenceFieldNames(scenario.fieldDefinitions) : []),
+    [scenario],
+  );
 
   const handleRunEvaluation = async (): Promise<void> => {
     if (!scenario || !promptVersion) {
@@ -63,8 +67,7 @@ export const PromptDetailPage = (): ReactElement => {
         signal: controller.signal,
         onProgress: setProgress,
       });
-      await workspaceApi.createEvaluationRun(run);
-      setRuns((currentRuns) => [run, ...currentRuns]);
+      createEvaluationRun(run);
     } catch (runError) {
       setError(
         runError instanceof DOMException && runError.name === 'AbortError'
@@ -89,9 +92,14 @@ export const PromptDetailPage = (): ReactElement => {
       return;
     }
 
+    if (hasDataReference(promptText, EXPECTED_RESULT_FIELD_NAME)) {
+      setError(`Prompt cannot reference {data.${EXPECTED_RESULT_FIELD_NAME}}.`);
+      return;
+    }
+
     setError('');
     try {
-      const nextVersion = await workspaceApi.createPromptVersion({
+      const nextVersion = createPromptVersion({
         scenarioId: scenario.id,
         title: title.trim() || promptVersion.title,
         promptText,
@@ -174,6 +182,13 @@ export const PromptDetailPage = (): ReactElement => {
           <Field>
             <Label htmlFor='prompt-text'>Prompt text</Label>
             <Textarea id='prompt-text' rows={16} value={promptText} onChange={(event) => setPromptText(event.target.value)} />
+            <p className='text-xs text-stone-500'>
+              Available references:{' '}
+              {availablePromptReferences.length > 0
+                ? availablePromptReferences.map((reference) => `{data.${reference}}`).join(', ')
+                : 'none'}
+              .
+            </p>
             <p className='text-xs text-stone-500'>
               References detected:{' '}
               {references.length > 0 ? references.map((reference) => `{data.${reference}}`).join(', ') : 'none'}.

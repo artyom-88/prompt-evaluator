@@ -32,7 +32,7 @@ export const ReportTable = ({ run }: { run: EvaluationRun }): ReactElement => (
           <tr>
             <th className='w-56 px-4 py-3 font-semibold'>Scenario</th>
             <th className='w-72 px-4 py-3 font-semibold'>Prompt Inputs</th>
-            <th className='w-72 px-4 py-3 font-semibold'>Solution Criteria</th>
+            <th className='w-72 px-4 py-3 font-semibold'>Expected Result</th>
             <th className='w-96 px-4 py-3 font-semibold'>Output</th>
             <th className='w-24 px-4 py-3 font-semibold'>Score</th>
             <th className='w-96 px-4 py-3 font-semibold'>Reasoning</th>
@@ -46,14 +46,7 @@ export const ReportTable = ({ run }: { run: EvaluationRun }): ReactElement => (
                 <pre className='whitespace-pre-wrap text-xs'>{JSON.stringify(result.input, null, 2)}</pre>
               </td>
               <td className='border-t border-stone-200 px-4 py-3'>
-                <ul className='list-disc space-y-1 pl-4'>
-                  {run.rubricSnapshot.criteria
-                    .split('\n')
-                    .filter(Boolean)
-                    .map((criterion) => (
-                      <li key={criterion}>{criterion}</li>
-                    ))}
-                </ul>
+                <pre className='whitespace-pre-wrap text-xs'>{result.expectedResult}</pre>
                 {result.codeChecks.length > 0 ? (
                   <div className='mt-3 space-y-1 text-xs'>
                     {result.codeChecks.map((check) => (
