@@ -5,9 +5,10 @@ A local-first React app for building and comparing AI prompts against generated 
 ## What It Does
 
 - Guides you through creating an evaluation scenario.
-- Generates test records from a user-provided JSON Schema.
+- Builds record structure from user-defined fields and shows the derived JSON Schema.
+- Generates test records that include built-in expected results.
 - Lets you write prompts with XML-style structure and `{data.field}` placeholders.
-- Runs prompt evaluations with a mix of code checks and LLM grading, with per-run progress and cancellation.
+- Runs prompt evaluations with app-owned code checks and LLM grading, with per-run progress and cancellation.
 - Stores scenarios, prompt versions, and evaluation runs in browser localStorage.
 - Compares prompt versions under the same scenario.
 - Supports scenario export/import and full workspace backup/restore.
@@ -63,7 +64,7 @@ Husky installs Git hooks during `pnpm install` through the `prepare` script.
 
 - `src/app/` contains route configuration, the app shell, and route-level error/loading boundaries.
 - `src/common/` contains shared UI primitives in `src/common/components/` and general utilities.
-- `src/features/workspace/` owns shared domain types in `workspaceTypes.ts`, the directly imported `workspaceApi.ts`, and localStorage persistence in `workspaceStore.ts`.
+- `src/features/workspace/` owns shared domain types, Jotai-backed workspace state, and localStorage persistence utilities.
 - `src/features/scenarios/` owns scenario list and scenario creation UI.
 - `src/features/prompts/` owns prompt version UI and prompt templating helpers.
 - `src/features/test-data/` owns generated test data, JSON Schema validation, and related types.
@@ -75,9 +76,9 @@ Route paths are configured centrally in `src/app/AppRoutes.tsx`; feature folders
 
 ## Test Data Validation
 
-Generated test data uses Claude tool use with a local `validate_test_data` client tool. Claude drafts records, calls the tool, the app validates the candidate data with AJV against the JSON Schema, and Claude repairs invalid records before returning the final JSON array.
+Generated test data uses Claude tool use with a local `validate_test_data` client tool. Claude drafts records, calls the tool, the app validates the candidate data with AJV against the derived JSON Schema, and Claude repairs invalid records before returning the final JSON array.
 
-The app still performs final local validation before saving generated records. App-owned data such as localStorage payloads and import/export files are validated separately with Zod.
+The app still performs final local validation before saving generated records. Each record must include the app-owned `expected_result` field, which stores the exact expected answer for that test case. App-owned data such as localStorage payloads and import/export files are validated separately with Zod.
 
 ## Development Notes
 
@@ -87,6 +88,8 @@ The app still performs final local validation before saving generated records. A
 - Prefer arrow functions consistently instead of `function` declarations.
 - Add explicit return types to named functions and components where practical.
 - Keep shared and exported feature types in dedicated `*Types.ts` files instead of implementation files.
+- Keep evaluation policy app-owned; do not reintroduce user-configurable rubrics.
+- The scenario wizard uses a field builder instead of raw schema editing and blocks forward navigation until the current step is valid.
 - Keep prompt versions immutable; editing a prompt creates a new version.
 - Mock Anthropic calls in automated tests.
 - Run `pnpm audit` before keeping new dependencies.

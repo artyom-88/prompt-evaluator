@@ -1,8 +1,13 @@
 import Ajv from 'ajv';
 
 import type { AnthropicClientTool, AnthropicTextClient } from '@/features/anthropic/anthropicTypes';
+import {
+  EXPECTED_RESULT_FIELD_DESCRIPTION,
+  EXPECTED_RESULT_FIELD_NAME,
+  getPromptReferenceFieldNames,
+} from '@/features/test-data/testDataSchema';
 import type { TestDataValidationResult } from '@/features/test-data/testDataTypes';
-import type { JsonObject } from '@/features/workspace/workspaceTypes';
+import type { JsonObject, ScenarioFieldDefinition } from '@/features/workspace/workspaceTypes';
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 
@@ -137,6 +142,7 @@ const createValidateTestDataTool = (input: {
 export const generateTestRecords = async (input: {
   client: AnthropicTextClient;
   scenarioDescription: string;
+  fieldDefinitions: ScenarioFieldDefinition[];
   recordSchemaText: string;
   recordCount: number;
   generationConstraints: string;
@@ -159,6 +165,8 @@ export const generateTestRecords = async (input: {
       '',
       `<scenario>${input.scenarioDescription}</scenario>`,
       `<record_count>${input.recordCount}</record_count>`,
+      `<input_fields>${getPromptReferenceFieldNames(input.fieldDefinitions).join(', ')}</input_fields>`,
+      `<expected_result_field name="${EXPECTED_RESULT_FIELD_NAME}">${EXPECTED_RESULT_FIELD_DESCRIPTION}</expected_result_field>`,
       `<json_schema>${input.recordSchemaText}</json_schema>`,
       input.generationConstraints ? `<constraints>${input.generationConstraints}</constraints>` : '',
       '',

@@ -1,40 +1,56 @@
-import type { ReactElement } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import type { ChangeEvent, ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { Card, CardContent, CardHeader } from '@/common/components/Card';
 import { Label } from '@/common/components/Form';
 import { formatPercent, formatScore } from '@/common/utils';
-import { workspaceApi } from '@/features/workspace/workspaceApi';
-import type { EvaluationRun, PromptVersion, Scenario } from '@/features/workspace/workspaceTypes';
+import { useEvaluationRuns, usePromptVersions, useScenario } from '@/features/workspace/workspaceState';
+import type { EvaluationRun } from '@/features/workspace/workspaceTypes';
 
 const latestRunForVersion = (runs: EvaluationRun[], versionId: string): EvaluationRun | undefined =>
   runs.find((run) => run.promptVersionId === versionId);
 
 export const CompareVersionsPage = (): ReactElement => {
   const { scenarioId = '' } = useParams();
-  const [scenario, setScenario] = useState<Scenario>();
-  const [versions, setVersions] = useState<PromptVersion[]>([]);
-  const [runs, setRuns] = useState<EvaluationRun[]>([]);
+  const scenario = useScenario(scenarioId);
+  const versions = usePromptVersions(scenarioId);
+  const runs = useEvaluationRuns(scenarioId);
   const [leftVersionId, setLeftVersionId] = useState('');
   const [rightVersionId, setRightVersionId] = useState('');
 
   useEffect(() => {
-    void Promise.all([
-      workspaceApi.getScenario(scenarioId),
-      workspaceApi.listPromptVersions(scenarioId),
-      workspaceApi.listEvaluationRuns(scenarioId),
-    ]).then(([nextScenario, nextVersions, nextRuns]) => {
-      setScenario(nextScenario);
-      setVersions(nextVersions);
-      setRuns(nextRuns);
-      setLeftVersionId((current) => current || nextVersions[1]?.id || nextVersions[0]?.id || '');
-      setRightVersionId((current) => current || nextVersions[0]?.id || '');
-    });
-  }, [scenarioId]);
+    setLeftVersionId((current) => current || versions[1]?.id || versions[0]?.id || '');
+    setRightVersionId((current) => current || versions[0]?.id || '');
+  }, [versions]);
 
-  const leftRun = useMemo(() => latestRunForVersion(runs, leftVersionId), [leftVersionId, runs]);
-  const rightRun = useMemo(() => latestRunForVersion(runs, rightVersionId), [rightVersionId, runs]);
+  const leftRun = latestRunForVersion(runs, leftVersionId);
+  const rightRun = latestRunForVersion(runs, rightVersionId);
+  const comparisonRows = useMemo(
+    () =>
+      !leftRun || !rightRun
+        ? []
+        : rightRun.results.map((candidateResult) => {
+            const baselineResult = leftRun.results.find((result) => result.recordIndex === candidateResult.recordIndex);
+            const baselineScore = baselineResult?.score ?? 0;
+            const delta = candidateResult.score - baselineScore;
+
+            return {
+              id: candidateResult.id,
+              baselineScore,
+              candidateScore: candidateResult.score,
+              delta,
+              recordIndex: candidateResult.recordIndex,
+            };
+          }),
+    [leftRun, rightRun],
+  );
+  const handleLeftVersionChange = useCallback((event: ChangeEvent<HTMLSelectElement>): void => {
+    setLeftVersionId(event.target.value);
+  }, []);
+  const handleRightVersionChange = useCallback((event: ChangeEvent<HTMLSelectElement>): void => {
+    setRightVersionId(event.target.value);
+  }, []);
 
   if (!scenario) {
     return <p className='text-sm text-stone-600'>Scenario not found.</p>;
@@ -58,7 +74,7 @@ export const CompareVersionsPage = (): ReactElement => {
               id='left-version'
               className='w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm'
               value={leftVersionId}
-              onChange={(event) => setLeftVersionId(event.target.value)}
+              onChange={handleLeftVersionChange}
             >
               {versions.map((version) => (
                 <option key={version.id} value={version.id}>
@@ -73,7 +89,7 @@ export const CompareVersionsPage = (): ReactElement => {
               id='right-version'
               className='w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm'
               value={rightVersionId}
-              onChange={(event) => setRightVersionId(event.target.value)}
+              onChange={handleRightVersionChange}
             >
               {versions.map((version) => (
                 <option key={version.id} value={version.id}>
@@ -118,21 +134,17 @@ export const CompareVersionsPage = (): ReactElement => {
                 </tr>
               </thead>
               <tbody>
-                {rightRun.results.map((candidateResult) => {
-                  const baselineResult = leftRun.results.find((result) => result.recordIndex === candidateResult.recordIndex);
-                  const baselineScore = baselineResult?.score ?? 0;
-                  const delta = candidateResult.score - baselineScore;
-
+                {comparisonRows.map((row) => {
                   return (
-                    <tr key={candidateResult.id} className='even:bg-stone-50'>
-                      <td className='border-t border-stone-200 px-4 py-3'>Test case {candidateResult.recordIndex + 1}</td>
-                      <td className='border-t border-stone-200 px-4 py-3'>{formatScore(baselineScore)}</td>
-                      <td className='border-t border-stone-200 px-4 py-3'>{formatScore(candidateResult.score)}</td>
+                    <tr key={row.id} className='even:bg-stone-50'>
+                      <td className='border-t border-stone-200 px-4 py-3'>Test case {row.recordIndex + 1}</td>
+                      <td className='border-t border-stone-200 px-4 py-3'>{formatScore(row.baselineScore)}</td>
+                      <td className='border-t border-stone-200 px-4 py-3'>{formatScore(row.candidateScore)}</td>
                       <td
-                        className={`border-t border-stone-200 px-4 py-3 font-semibold ${delta >= 0 ? 'text-emerald-700' : 'text-red-700'}`}
+                        className={`border-t border-stone-200 px-4 py-3 font-semibold ${row.delta >= 0 ? 'text-emerald-700' : 'text-red-700'}`}
                       >
-                        {delta >= 0 ? '+' : ''}
-                        {formatScore(delta)}
+                        {row.delta >= 0 ? '+' : ''}
+                        {formatScore(row.delta)}
                       </td>
                     </tr>
                   );

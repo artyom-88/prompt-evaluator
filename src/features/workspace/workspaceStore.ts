@@ -3,13 +3,14 @@ import { z } from 'zod';
 import type {
   CodeCheckResult,
   EvaluationResult,
-  EvaluationRubric,
   EvaluationRun,
   JsonObject,
   JsonValue,
   PromptVersion,
   Scenario,
   ScenarioBundle,
+  ScenarioDraft,
+  ScenarioFieldDefinition,
   WorkspaceApi,
   WorkspaceBackup,
   WorkspaceStoreData,
@@ -17,7 +18,7 @@ import type {
 
 const STORAGE_KEY = 'prompt-evaluator:data:v1';
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(jsonValueSchema), z.record(z.string(), jsonValueSchema)]),
@@ -25,23 +26,22 @@ const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
 
 const jsonObjectSchema = z.record(z.string(), jsonValueSchema) as z.ZodType<JsonObject>;
 
-const evaluationRubricSchema = z.object({
-  criteria: z.string(),
-  requireJson: z.boolean(),
-  requiredJsonFields: z.array(z.string()),
-  mustContain: z.array(z.string()),
-  passScore: z.number(),
-}) satisfies z.ZodType<EvaluationRubric>;
+const scenarioFieldDefinitionSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1),
+  type: z.enum(['string', 'number', 'integer', 'boolean']),
+  description: z.string().min(1),
+}) satisfies z.ZodType<ScenarioFieldDefinition>;
 
 const scenarioSchema = z.object({
   id: z.string(),
   title: z.string(),
   description: z.string(),
   recordCount: z.number().int().nonnegative(),
+  fieldDefinitions: z.array(scenarioFieldDefinitionSchema),
   recordSchemaText: z.string(),
   generationConstraints: z.string(),
   testRecords: z.array(jsonObjectSchema),
-  rubric: evaluationRubricSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
 }) satisfies z.ZodType<Scenario>;
@@ -67,6 +67,7 @@ const evaluationResultSchema = z.object({
   id: z.string(),
   recordIndex: z.number().int().nonnegative(),
   input: jsonObjectSchema,
+  expectedResult: z.string(),
   renderedPrompt: z.string(),
   output: z.string(),
   score: z.number(),
@@ -81,9 +82,9 @@ const evaluationRunSchema = z.object({
   scenarioId: z.string(),
   promptVersionId: z.string(),
   model: z.string(),
+  evaluatorVersion: z.string(),
   createdAt: z.string(),
   testRecordsSnapshot: z.array(jsonObjectSchema),
-  rubricSnapshot: evaluationRubricSchema,
   results: z.array(evaluationResultSchema),
   averageScore: z.number(),
   passRate: z.number(),
@@ -110,13 +111,6 @@ const scenarioBundleSchema = z.object({
   evaluationRuns: z.array(evaluationRunSchema),
 }) satisfies z.ZodType<ScenarioBundle>;
 
-const emptyStore = (): WorkspaceStoreData => ({
-  schemaVersion: SCHEMA_VERSION,
-  scenarios: [],
-  promptVersions: [],
-  evaluationRuns: [],
-});
-
 const now = (): string => new Date().toISOString();
 
 const createId = (prefix: string): string => `${prefix}_${crypto.randomUUID()}`;
@@ -125,67 +119,37 @@ const formatValidationError = (error: z.ZodError): string =>
   error.issues
     .map((issue) => {
       const path = issue.path.length > 0 ? issue.path.join('.') : 'root';
+
       return `${path}: ${issue.message}`;
     })
     .join('; ');
 
 const validateStoreRelations = (store: WorkspaceStoreData): void => {
   const scenarioIds = new Set(store.scenarios.map((scenario) => scenario.id));
-  const promptVersionIds = new Set(store.promptVersions.map((version) => version.id));
+  const promptVersionIds = new Set(store.promptVersions.map((promptVersion) => promptVersion.id));
 
-  for (const version of store.promptVersions) {
-    if (!scenarioIds.has(version.scenarioId)) {
-      throw new Error(`Invalid workspace data: prompt version ${version.id} references missing scenario ${version.scenarioId}.`);
+  for (const promptVersion of store.promptVersions) {
+    if (!scenarioIds.has(promptVersion.scenarioId)) {
+      throw new Error(
+        `Invalid workspace data: prompt version ${promptVersion.id} references missing scenario ${promptVersion.scenarioId}.`,
+      );
     }
   }
 
-  for (const run of store.evaluationRuns) {
-    if (!scenarioIds.has(run.scenarioId)) {
-      throw new Error(`Invalid workspace data: evaluation run ${run.id} references missing scenario ${run.scenarioId}.`);
+  for (const evaluationRun of store.evaluationRuns) {
+    if (!scenarioIds.has(evaluationRun.scenarioId)) {
+      throw new Error(
+        `Invalid workspace data: evaluation run ${evaluationRun.id} references missing scenario ${evaluationRun.scenarioId}.`,
+      );
     }
 
-    if (!promptVersionIds.has(run.promptVersionId)) {
+    if (!promptVersionIds.has(evaluationRun.promptVersionId)) {
       throw new Error(
-        `Invalid workspace data: evaluation run ${run.id} references missing prompt version ${run.promptVersionId}.`,
+        `Invalid workspace data: evaluation run ${evaluationRun.id} references missing prompt version ${evaluationRun.promptVersionId}.`,
       );
     }
   }
 };
-
-const readStore = (): WorkspaceStoreData => {
-  if (typeof localStorage === 'undefined') {
-    return emptyStore();
-  }
-
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    return emptyStore();
-  }
-
-  try {
-    const parsed = JSON.parse(raw);
-    const result = storeSchema.safeParse(parsed);
-    if (!result.success) {
-      return emptyStore();
-    }
-
-    validateStoreRelations(result.data);
-    return result.data;
-  } catch {
-    return emptyStore();
-  }
-};
-
-const writeStore = (store: WorkspaceStoreData): void => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
-};
-
-interface CreatedAtRecord {
-  createdAt: string;
-}
-
-const byNewest = <T extends CreatedAtRecord>(items: T[]): T[] =>
-  [...items].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
 
 const parseWorkspaceBackup = (payload: unknown): WorkspaceBackup => {
   const result = workspaceBackupSchema.safeParse(payload);
@@ -204,34 +168,220 @@ const parseScenarioBundle = (payload: unknown): ScenarioBundle => {
     throw new Error(`Invalid scenario bundle: ${formatValidationError(result.error)}`);
   }
 
-  const promptVersionIds = new Set(result.data.promptVersions.map((version) => version.id));
+  const promptVersionIds = new Set(result.data.promptVersions.map((promptVersion) => promptVersion.id));
 
-  for (const version of result.data.promptVersions) {
-    if (version.scenarioId !== result.data.scenario.id) {
-      throw new Error(`Invalid scenario bundle: prompt version ${version.id} references a different scenario.`);
+  for (const promptVersion of result.data.promptVersions) {
+    if (promptVersion.scenarioId !== result.data.scenario.id) {
+      throw new Error(`Invalid scenario bundle: prompt version ${promptVersion.id} references a different scenario.`);
     }
   }
 
-  for (const run of result.data.evaluationRuns) {
-    if (run.scenarioId !== result.data.scenario.id) {
-      throw new Error(`Invalid scenario bundle: evaluation run ${run.id} references a different scenario.`);
+  for (const evaluationRun of result.data.evaluationRuns) {
+    if (evaluationRun.scenarioId !== result.data.scenario.id) {
+      throw new Error(`Invalid scenario bundle: evaluation run ${evaluationRun.id} references a different scenario.`);
     }
 
-    if (!promptVersionIds.has(run.promptVersionId)) {
-      throw new Error(`Invalid scenario bundle: evaluation run ${run.id} references a missing prompt version.`);
+    if (!promptVersionIds.has(evaluationRun.promptVersionId)) {
+      throw new Error(`Invalid scenario bundle: evaluation run ${evaluationRun.id} references a missing prompt version.`);
     }
   }
 
   return result.data;
 };
 
-const mapScenarioBundleToStore = (
-  store: WorkspaceStoreData,
-  bundle: ScenarioBundle,
+interface CreatedAtRecord {
+  createdAt: string;
+}
+
+export const emptyWorkspaceStore = (): WorkspaceStoreData => ({
+  schemaVersion: SCHEMA_VERSION,
+  scenarios: [],
+  promptVersions: [],
+  evaluationRuns: [],
+});
+
+export const sortByNewest = <T extends CreatedAtRecord>(items: T[]): T[] =>
+  [...items].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+
+export const readWorkspaceStore = (): WorkspaceStoreData => {
+  if (typeof localStorage === 'undefined') {
+    return emptyWorkspaceStore();
+  }
+
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) {
+    return emptyWorkspaceStore();
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    const result = storeSchema.safeParse(parsed);
+    if (!result.success) {
+      return emptyWorkspaceStore();
+    }
+
+    validateStoreRelations(result.data);
+
+    return result.data;
+  } catch {
+    return emptyWorkspaceStore();
+  }
+};
+
+export const writeWorkspaceStore = (store: WorkspaceStoreData): void => {
+  if (typeof localStorage === 'undefined') {
+    return;
+  }
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+};
+
+export const createScenarioRecord = (
+  draft: ScenarioDraft,
 ): {
-  importedScenario: Scenario;
-  store: WorkspaceStoreData;
+  scenario: Scenario;
+  initialPromptVersion: PromptVersion;
 } => {
+  const timestamp = now();
+  const scenario: Scenario = {
+    id: createId('scenario'),
+    title: draft.title,
+    description: draft.description,
+    recordCount: draft.recordCount,
+    fieldDefinitions: draft.fieldDefinitions,
+    recordSchemaText: draft.recordSchemaText,
+    generationConstraints: draft.generationConstraints,
+    testRecords: draft.testRecords,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  const initialPromptVersion: PromptVersion = {
+    id: createId('prompt'),
+    scenarioId: scenario.id,
+    versionNumber: 1,
+    title: draft.initialPromptTitle,
+    promptText: draft.initialPromptText,
+    notes: 'Initial prompt version',
+    createdAt: timestamp,
+  };
+
+  return { scenario, initialPromptVersion };
+};
+
+export const createScenarioInStore = (
+  store: WorkspaceStoreData,
+  draft: ScenarioDraft,
+): {
+  store: WorkspaceStoreData;
+  scenario: Scenario;
+  initialPromptVersion: PromptVersion;
+} => {
+  const { scenario, initialPromptVersion } = createScenarioRecord(draft);
+
+  return {
+    store: {
+      ...store,
+      scenarios: [...store.scenarios, scenario],
+      promptVersions: [...store.promptVersions, initialPromptVersion],
+    },
+    scenario,
+    initialPromptVersion,
+  };
+};
+
+export const createPromptVersionInStore = (
+  store: WorkspaceStoreData,
+  draft: {
+    scenarioId: string;
+    title: string;
+    promptText: string;
+    notes: string;
+    parentVersionId?: string;
+  },
+): {
+  store: WorkspaceStoreData;
+  promptVersion: PromptVersion;
+} => {
+  const existingVersions = store.promptVersions.filter((promptVersion) => promptVersion.scenarioId === draft.scenarioId);
+  const nextVersionNumber = Math.max(0, ...existingVersions.map((promptVersion) => promptVersion.versionNumber)) + 1;
+  const promptVersion: PromptVersion = {
+    id: createId('prompt'),
+    scenarioId: draft.scenarioId,
+    versionNumber: nextVersionNumber,
+    title: draft.title,
+    promptText: draft.promptText,
+    notes: draft.notes,
+    parentVersionId: draft.parentVersionId,
+    createdAt: now(),
+  };
+
+  return {
+    store: {
+      ...store,
+      promptVersions: [...store.promptVersions, promptVersion],
+    },
+    promptVersion,
+  };
+};
+
+export const createEvaluationRunInStore = (
+  store: WorkspaceStoreData,
+  evaluationRun: EvaluationRun,
+): {
+  store: WorkspaceStoreData;
+  evaluationRun: EvaluationRun;
+} => {
+  const parsedRun = evaluationRunSchema.safeParse(evaluationRun);
+  if (!parsedRun.success) {
+    throw new Error(`Invalid evaluation run: ${formatValidationError(parsedRun.error)}`);
+  }
+
+  return {
+    store: {
+      ...store,
+      evaluationRuns: [...store.evaluationRuns, parsedRun.data],
+    },
+    evaluationRun: parsedRun.data,
+  };
+};
+
+export const exportWorkspaceStore = (store: WorkspaceStoreData): WorkspaceBackup => ({
+  kind: 'workspace-backup',
+  exportedAt: now(),
+  store,
+});
+
+export const importWorkspaceStore = (payload: unknown): WorkspaceStoreData => parseWorkspaceBackup(payload).store;
+
+export const exportScenarioBundleFromStore = (store: WorkspaceStoreData, scenarioId: string): ScenarioBundle => {
+  const scenario = store.scenarios.find((candidate) => candidate.id === scenarioId);
+  if (!scenario) {
+    throw new Error('Scenario not found.');
+  }
+
+  const promptVersions = store.promptVersions
+    .filter((promptVersion) => promptVersion.scenarioId === scenarioId)
+    .sort((left, right) => left.versionNumber - right.versionNumber);
+  const promptVersionIds = new Set(promptVersions.map((promptVersion) => promptVersion.id));
+  const evaluationRuns = store.evaluationRuns.filter((evaluationRun) => promptVersionIds.has(evaluationRun.promptVersionId));
+
+  return {
+    kind: 'scenario-bundle',
+    exportedAt: now(),
+    scenario,
+    promptVersions,
+    evaluationRuns,
+  };
+};
+
+export const importScenarioBundleIntoStore = (
+  store: WorkspaceStoreData,
+  payload: unknown,
+): {
+  store: WorkspaceStoreData;
+  importedScenario: Scenario;
+} => {
+  const bundle = parseScenarioBundle(payload);
   const importedScenarioId = createId('scenario');
   const importedAt = now();
   const promptIdMap = new Map<string, string>();
@@ -241,29 +391,27 @@ const mapScenarioBundleToStore = (
     createdAt: importedAt,
     updatedAt: importedAt,
   };
-
   const importedPromptVersions = [...bundle.promptVersions]
     .sort((left, right) => left.versionNumber - right.versionNumber)
-    .map((version) => {
+    .map((promptVersion) => {
       const nextId = createId('prompt');
-      promptIdMap.set(version.id, nextId);
+      promptIdMap.set(promptVersion.id, nextId);
 
       return {
-        ...version,
+        ...promptVersion,
         id: nextId,
         scenarioId: importedScenarioId,
-        parentVersionId: version.parentVersionId ? promptIdMap.get(version.parentVersionId) : undefined,
+        parentVersionId: promptVersion.parentVersionId ? promptIdMap.get(promptVersion.parentVersionId) : undefined,
       };
     });
-
-  const importedEvaluationRuns = bundle.evaluationRuns.map((run) => {
-    const promptVersionId = promptIdMap.get(run.promptVersionId);
+  const importedEvaluationRuns = bundle.evaluationRuns.map((evaluationRun) => {
+    const promptVersionId = promptIdMap.get(evaluationRun.promptVersionId);
     if (!promptVersionId) {
-      throw new Error(`Invalid scenario bundle: missing imported prompt version for run ${run.id}.`);
+      throw new Error(`Invalid scenario bundle: missing imported prompt version for run ${evaluationRun.id}.`);
     }
 
     return {
-      ...run,
+      ...evaluationRun,
       id: createId('run'),
       scenarioId: importedScenarioId,
       promptVersionId,
@@ -283,143 +431,74 @@ const mapScenarioBundleToStore = (
 
 export const createLocalStorageWorkspaceApi = (): WorkspaceApi => ({
   async listScenarios(): Promise<Scenario[]> {
-    return byNewest(readStore().scenarios);
+    return sortByNewest(readWorkspaceStore().scenarios);
   },
 
   async getScenario(id): Promise<Scenario | undefined> {
-    return readStore().scenarios.find((scenario) => scenario.id === id);
+    return readWorkspaceStore().scenarios.find((scenario) => scenario.id === id);
   },
 
   async createScenario(draft): Promise<{ scenario: Scenario; initialPromptVersion: PromptVersion }> {
-    const store = readStore();
-    const timestamp = now();
-    const scenario: Scenario = {
-      id: createId('scenario'),
-      title: draft.title,
-      description: draft.description,
-      recordCount: draft.recordCount,
-      recordSchemaText: draft.recordSchemaText,
-      generationConstraints: draft.generationConstraints,
-      testRecords: draft.testRecords,
-      rubric: draft.rubric,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    };
-    const initialPromptVersion: PromptVersion = {
-      id: createId('prompt'),
-      scenarioId: scenario.id,
-      versionNumber: 1,
-      title: draft.initialPromptTitle,
-      promptText: draft.initialPromptText,
-      notes: 'Initial prompt version',
-      createdAt: timestamp,
-    };
+    const result = createScenarioInStore(readWorkspaceStore(), draft);
+    writeWorkspaceStore(result.store);
 
-    writeStore({
-      ...store,
-      scenarios: [...store.scenarios, scenario],
-      promptVersions: [...store.promptVersions, initialPromptVersion],
-    });
-
-    return { scenario, initialPromptVersion };
+    return {
+      scenario: result.scenario,
+      initialPromptVersion: result.initialPromptVersion,
+    };
   },
 
   async listPromptVersions(scenarioId): Promise<PromptVersion[]> {
-    return readStore()
-      .promptVersions.filter((version) => version.scenarioId === scenarioId)
+    return readWorkspaceStore()
+      .promptVersions.filter((promptVersion) => promptVersion.scenarioId === scenarioId)
       .sort((left, right) => right.versionNumber - left.versionNumber);
   },
 
   async getPromptVersion(id): Promise<PromptVersion | undefined> {
-    return readStore().promptVersions.find((version) => version.id === id);
+    return readWorkspaceStore().promptVersions.find((promptVersion) => promptVersion.id === id);
   },
 
   async createPromptVersion(draft): Promise<PromptVersion> {
-    const store = readStore();
-    const existingVersions = store.promptVersions.filter((version) => version.scenarioId === draft.scenarioId);
-    const nextVersionNumber = Math.max(0, ...existingVersions.map((version) => version.versionNumber)) + 1;
-    const promptVersion: PromptVersion = {
-      id: createId('prompt'),
-      scenarioId: draft.scenarioId,
-      versionNumber: nextVersionNumber,
-      title: draft.title,
-      promptText: draft.promptText,
-      notes: draft.notes,
-      parentVersionId: draft.parentVersionId,
-      createdAt: now(),
-    };
+    const result = createPromptVersionInStore(readWorkspaceStore(), draft);
+    writeWorkspaceStore(result.store);
 
-    writeStore({
-      ...store,
-      promptVersions: [...store.promptVersions, promptVersion],
-    });
-
-    return promptVersion;
+    return result.promptVersion;
   },
 
   async listEvaluationRuns(scenarioId): Promise<EvaluationRun[]> {
-    return byNewest(readStore().evaluationRuns.filter((run) => run.scenarioId === scenarioId));
+    return sortByNewest(readWorkspaceStore().evaluationRuns.filter((evaluationRun) => evaluationRun.scenarioId === scenarioId));
   },
 
   async listEvaluationRunsForPrompt(promptVersionId): Promise<EvaluationRun[]> {
-    return byNewest(readStore().evaluationRuns.filter((run) => run.promptVersionId === promptVersionId));
+    return sortByNewest(
+      readWorkspaceStore().evaluationRuns.filter((evaluationRun) => evaluationRun.promptVersionId === promptVersionId),
+    );
   },
 
-  async createEvaluationRun(run): Promise<EvaluationRun> {
-    const parsedRun = evaluationRunSchema.safeParse(run);
-    if (!parsedRun.success) {
-      throw new Error(`Invalid evaluation run: ${formatValidationError(parsedRun.error)}`);
-    }
+  async createEvaluationRun(evaluationRun): Promise<EvaluationRun> {
+    const result = createEvaluationRunInStore(readWorkspaceStore(), evaluationRun);
+    writeWorkspaceStore(result.store);
 
-    const store = readStore();
-    writeStore({
-      ...store,
-      evaluationRuns: [...store.evaluationRuns, parsedRun.data],
-    });
-    return parsedRun.data;
+    return result.evaluationRun;
   },
 
   async exportWorkspace(): Promise<WorkspaceBackup> {
-    return {
-      kind: 'workspace-backup',
-      exportedAt: now(),
-      store: readStore(),
-    };
+    return exportWorkspaceStore(readWorkspaceStore());
   },
 
   async importWorkspace(payload): Promise<void> {
-    const parsedBackup = parseWorkspaceBackup(payload);
-    writeStore(parsedBackup.store);
+    writeWorkspaceStore(importWorkspaceStore(payload));
   },
 
   async exportScenarioBundle(scenarioId): Promise<ScenarioBundle> {
-    const store = readStore();
-    const scenario = store.scenarios.find((candidate) => candidate.id === scenarioId);
-    if (!scenario) {
-      throw new Error('Scenario not found.');
-    }
-
-    const promptVersions = store.promptVersions
-      .filter((version) => version.scenarioId === scenarioId)
-      .sort((left, right) => left.versionNumber - right.versionNumber);
-    const promptVersionIds = new Set(promptVersions.map((version) => version.id));
-    const evaluationRuns = store.evaluationRuns.filter((run) => promptVersionIds.has(run.promptVersionId));
-
-    return {
-      kind: 'scenario-bundle',
-      exportedAt: now(),
-      scenario,
-      promptVersions,
-      evaluationRuns,
-    };
+    return exportScenarioBundleFromStore(readWorkspaceStore(), scenarioId);
   },
 
   async importScenarioBundle(payload): Promise<Scenario> {
-    const store = readStore();
-    const parsedBundle = parseScenarioBundle(payload);
-    const { importedScenario, store: nextStore } = mapScenarioBundleToStore(store, parsedBundle);
-    writeStore(nextStore);
-    return importedScenario;
+    const result = importScenarioBundleIntoStore(readWorkspaceStore(), payload);
+    writeWorkspaceStore(result.store);
+
+    return result.importedScenario;
   },
 });
 

@@ -1,22 +1,17 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { EXPECTED_RESULT_FIELD_NAME } from '@/features/test-data/testDataSchema';
 import { createLocalStorageWorkspaceApi, workspaceStoreTestUtils } from '@/features/workspace/workspaceStore';
-import type { EvaluationRun } from '@/features/workspace/workspaceTypes';
+import type { EvaluationRun, ScenarioDraft } from '@/features/workspace/workspaceTypes';
 
-const scenarioDraft = {
+const scenarioDraft: ScenarioDraft = {
   title: 'Topic extraction',
   description: 'Extract topics from content.',
   recordCount: 1,
+  fieldDefinitions: [{ id: 'field_1', name: 'content', type: 'string', description: 'Source content' }],
   recordSchemaText: '{"type":"object"}',
   generationConstraints: '',
-  testRecords: [{ content: 'hello' }],
-  rubric: {
-    criteria: 'Return topics.',
-    requireJson: true,
-    requiredJsonFields: [],
-    mustContain: [],
-    passScore: 7,
-  },
+  testRecords: [{ content: 'hello', [EXPECTED_RESULT_FIELD_NAME]: 'topic a' }],
   initialPromptTitle: 'Initial',
   initialPromptText: 'Return topics for {data.content}',
 };
@@ -97,9 +92,9 @@ describe('workspace localStorage API', () => {
       scenarioId: scenario.id,
       promptVersionId: secondVersion.id,
       model: 'claude-haiku-4-5',
+      evaluatorVersion: 'builtin-v1',
       createdAt: '2026-04-07T00:00:00.000Z',
       testRecordsSnapshot: scenario.testRecords,
-      rubricSnapshot: scenario.rubric,
       averageScore: 8,
       passRate: 100,
       results: [
@@ -107,6 +102,7 @@ describe('workspace localStorage API', () => {
           id: 'result_1',
           recordIndex: 0,
           input: scenario.testRecords[0],
+          expectedResult: 'topic a',
           renderedPrompt: 'Rendered prompt',
           output: '["topic"]',
           score: 8,

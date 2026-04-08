@@ -4,12 +4,13 @@ export interface JsonObject {
   [key: string]: JsonValue;
 }
 
-export interface EvaluationRubric {
-  criteria: string;
-  requireJson: boolean;
-  requiredJsonFields: string[];
-  mustContain: string[];
-  passScore: number;
+export type ScenarioFieldType = 'string' | 'number' | 'integer' | 'boolean';
+
+export interface ScenarioFieldDefinition {
+  id: string;
+  name: string;
+  type: ScenarioFieldType;
+  description: string;
 }
 
 export interface Scenario {
@@ -17,10 +18,10 @@ export interface Scenario {
   title: string;
   description: string;
   recordCount: number;
+  fieldDefinitions: ScenarioFieldDefinition[];
   recordSchemaText: string;
   generationConstraints: string;
   testRecords: JsonObject[];
-  rubric: EvaluationRubric;
   createdAt: string;
   updatedAt: string;
 }
@@ -46,6 +47,7 @@ export interface EvaluationResult {
   id: string;
   recordIndex: number;
   input: JsonObject;
+  expectedResult: string;
   renderedPrompt: string;
   output: string;
   score: number;
@@ -60,9 +62,9 @@ export interface EvaluationRun {
   scenarioId: string;
   promptVersionId: string;
   model: string;
+  evaluatorVersion: string;
   createdAt: string;
   testRecordsSnapshot: JsonObject[];
-  rubricSnapshot: EvaluationRubric;
   results: EvaluationResult[];
   averageScore: number;
   passRate: number;
@@ -72,10 +74,10 @@ export interface ScenarioDraft {
   title: string;
   description: string;
   recordCount: number;
+  fieldDefinitions: ScenarioFieldDefinition[];
   recordSchemaText: string;
   generationConstraints: string;
   testRecords: JsonObject[];
-  rubric: EvaluationRubric;
   initialPromptTitle: string;
   initialPromptText: string;
 }

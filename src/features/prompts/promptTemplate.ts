@@ -23,3 +23,6 @@ export const interpolatePrompt = (prompt: string, data: JsonObject): string =>
 
 export const findDataReferences = (prompt: string): string[] =>
   [...prompt.matchAll(DATA_REFERENCE_PATTERN)].map((match) => match[1]);
+
+export const hasDataReference = (prompt: string, referenceName: string): boolean =>
+  findDataReferences(prompt).includes(referenceName);

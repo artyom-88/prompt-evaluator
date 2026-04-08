@@ -1,30 +1,20 @@
 import type { ReactElement } from 'react';
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { Badge } from '@/common/components/Badge';
 import { Card, CardContent, CardHeader } from '@/common/components/Card';
 import { formatPercent, formatScore } from '@/common/utils';
-import { workspaceApi } from '@/features/workspace/workspaceApi';
-import type { EvaluationRun, PromptVersion, Scenario } from '@/features/workspace/workspaceTypes';
+import { useEvaluationRuns, usePromptVersions, useScenario } from '@/features/workspace/workspaceState';
 
 export const PromptVersionsPage = (): ReactElement => {
   const { scenarioId = '' } = useParams();
-  const [scenario, setScenario] = useState<Scenario>();
-  const [versions, setVersions] = useState<PromptVersion[]>([]);
-  const [runs, setRuns] = useState<EvaluationRun[]>([]);
-
-  useEffect(() => {
-    void Promise.all([
-      workspaceApi.getScenario(scenarioId),
-      workspaceApi.listPromptVersions(scenarioId),
-      workspaceApi.listEvaluationRuns(scenarioId),
-    ]).then(([nextScenario, nextVersions, nextRuns]) => {
-      setScenario(nextScenario);
-      setVersions(nextVersions);
-      setRuns(nextRuns);
-    });
-  }, [scenarioId]);
+  const scenario = useScenario(scenarioId);
+  const versions = usePromptVersions(scenarioId);
+  const runs = useEvaluationRuns(scenarioId);
+  const latestRunsByPromptVersionId = useMemo(() => {
+    return new Map(runs.map((run) => [run.promptVersionId, run] as const));
+  }, [runs]);
 
   if (!scenario) {
     return <p className='text-sm text-stone-600'>Scenario not found.</p>;
@@ -47,7 +37,7 @@ export const PromptVersionsPage = (): ReactElement => {
 
       <div className='grid gap-4'>
         {versions.map((version) => {
-          const latestRun = runs.find((run) => run.promptVersionId === version.id);
+          const latestRun = latestRunsByPromptVersionId.get(version.id);
 
           return (
             <Card key={version.id}>

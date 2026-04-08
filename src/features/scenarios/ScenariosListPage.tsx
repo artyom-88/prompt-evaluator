@@ -1,11 +1,17 @@
 import type { ChangeEvent, ReactElement } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { Badge } from '@/common/components/Badge';
 import { Button } from '@/common/components/Button';
 import { Card, CardContent, CardHeader } from '@/common/components/Card';
-import { workspaceApi } from '@/features/workspace/workspaceApi';
+import {
+  useExportScenarioBundle,
+  useExportWorkspace,
+  useImportScenarioBundle,
+  useImportWorkspace,
+  useWorkspaceScenarios,
+} from '@/features/workspace/workspaceState';
 import type { Scenario } from '@/features/workspace/workspaceTypes';
 
 const downloadJson = (filename: string, payload: unknown): void => {
@@ -27,82 +33,130 @@ const slugify = (value: string): string =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
+const readJsonFile = async (file: File): Promise<unknown> => JSON.parse(await file.text());
+
 export const ScenariosListPage = (): ReactElement => {
   const navigate = useNavigate();
-  const [scenarios, setScenarios] = useState<Scenario[]>([]);
+  const scenarios = useWorkspaceScenarios();
+  const exportWorkspace = useExportWorkspace();
+  const importWorkspace = useImportWorkspace();
+  const exportScenarioBundle = useExportScenarioBundle();
+  const importScenarioBundle = useImportScenarioBundle();
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const scenarioImportRef = useRef<HTMLInputElement>(null);
   const workspaceImportRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    void workspaceApi.listScenarios().then(setScenarios);
-  }, []);
-
-  const readJsonFile = async (file: File): Promise<unknown> => JSON.parse(await file.text());
-
-  const handleExportWorkspace = async (): Promise<void> => {
+  const handleExportWorkspace = useCallback(async (): Promise<void> => {
     setError('');
-    const payload = await workspaceApi.exportWorkspace();
+    const payload = exportWorkspace();
     downloadJson(`prompt-evaluator-workspace-${new Date().toISOString().slice(0, 10)}.json`, payload);
     setNotice('Workspace backup exported.');
-  };
+  }, [exportWorkspace]);
 
-  const handleExportScenario = async (scenario: Scenario): Promise<void> => {
-    setError('');
-    const payload = await workspaceApi.exportScenarioBundle(scenario.id);
-    downloadJson(`${slugify(scenario.title) || 'scenario'}-bundle.json`, payload);
-    setNotice(`Scenario "${scenario.title}" exported.`);
-  };
+  const handleExportScenario = useCallback(
+    async (scenario: Scenario): Promise<void> => {
+      setError('');
+      const payload = exportScenarioBundle(scenario.id);
+      downloadJson(`${slugify(scenario.title) || 'scenario'}-bundle.json`, payload);
+      setNotice(`Scenario "${scenario.title}" exported.`);
+    },
+    [exportScenarioBundle],
+  );
 
-  const handleScenarioImport = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
+  const handleScenarioImport = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
+      const file = event.target.files?.[0];
+      event.target.value = '';
 
-    if (!file) {
-      return;
-    }
-
-    setError('');
-    setNotice('');
-    try {
-      const importedScenario = await workspaceApi.importScenarioBundle(await readJsonFile(file));
-      setScenarios(await workspaceApi.listScenarios());
-      setNotice(`Scenario "${importedScenario.title}" imported.`);
-      navigate(`/scenarios/${importedScenario.id}/prompts`);
-    } catch (importError) {
-      setError(importError instanceof Error ? importError.message : 'Failed to import the scenario bundle.');
-    }
-  };
-
-  const handleWorkspaceImport = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-
-    if (!file) {
-      return;
-    }
-
-    setError('');
-    setNotice('');
-
-    try {
-      const payload = await readJsonFile(file);
-      const confirmed = window.confirm(
-        'Importing a workspace backup will replace all existing local scenarios, prompts, and reports. Continue?',
-      );
-
-      if (!confirmed) {
+      if (!file) {
         return;
       }
 
-      await workspaceApi.importWorkspace(payload);
-      setScenarios(await workspaceApi.listScenarios());
-      setNotice('Workspace backup imported.');
-    } catch (importError) {
-      setError(importError instanceof Error ? importError.message : 'Failed to import the workspace backup.');
-    }
-  };
+      setError('');
+      setNotice('');
+      try {
+        const importedScenario = importScenarioBundle(await readJsonFile(file));
+        setNotice(`Scenario "${importedScenario.title}" imported.`);
+        navigate(`/scenarios/${importedScenario.id}/prompts`);
+      } catch (importError) {
+        setError(importError instanceof Error ? importError.message : 'Failed to import the scenario bundle.');
+      }
+    },
+    [importScenarioBundle, navigate],
+  );
+
+  const handleWorkspaceImport = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+
+      if (!file) {
+        return;
+      }
+
+      setError('');
+      setNotice('');
+
+      try {
+        const payload = await readJsonFile(file);
+        const confirmed = window.confirm(
+          'Importing a workspace backup will replace all existing local scenarios, prompts, and reports. Continue?',
+        );
+
+        if (!confirmed) {
+          return;
+        }
+
+        importWorkspace(payload);
+        setNotice('Workspace backup imported.');
+      } catch (importError) {
+        setError(importError instanceof Error ? importError.message : 'Failed to import the workspace backup.');
+      }
+    },
+    [importWorkspace],
+  );
+
+  const handleOpenScenarioImport = useCallback((): void => {
+    scenarioImportRef.current?.click();
+  }, []);
+
+  const handleOpenWorkspaceImport = useCallback((): void => {
+    workspaceImportRef.current?.click();
+  }, []);
+
+  const scenarioCards = useMemo(
+    () =>
+      scenarios.map((scenario) => (
+        <Card key={scenario.id}>
+          <CardHeader>
+            <div className='flex items-start justify-between gap-4'>
+              <div>
+                <h2 className='font-semibold'>{scenario.title}</h2>
+                <p className='mt-1 line-clamp-2 text-sm text-stone-600'>{scenario.description}</p>
+              </div>
+              <Badge>{scenario.testRecords.length} records</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className='flex gap-3'>
+            <Link className='text-sm font-medium text-stone-950 underline' to={`/scenarios/${scenario.id}/prompts`}>
+              Prompt versions
+            </Link>
+            <Link className='text-sm font-medium text-stone-950 underline' to={`/scenarios/${scenario.id}/compare`}>
+              Compare
+            </Link>
+            <button
+              className='text-sm font-medium text-stone-950 underline'
+              type='button'
+              onClick={() => void handleExportScenario(scenario)}
+            >
+              Export
+            </button>
+          </CardContent>
+        </Card>
+      )),
+    [handleExportScenario, scenarios],
+  );
 
   return (
     <div className='space-y-6'>
@@ -114,10 +168,10 @@ export const ScenariosListPage = (): ReactElement => {
         <div className='flex flex-wrap justify-end gap-3'>
           <input ref={scenarioImportRef} hidden accept='application/json,.json' type='file' onChange={handleScenarioImport} />
           <input ref={workspaceImportRef} hidden accept='application/json,.json' type='file' onChange={handleWorkspaceImport} />
-          <Button type='button' variant='secondary' onClick={() => scenarioImportRef.current?.click()}>
+          <Button type='button' variant='secondary' onClick={handleOpenScenarioImport}>
             Import scenario
           </Button>
-          <Button type='button' variant='secondary' onClick={() => workspaceImportRef.current?.click()}>
+          <Button type='button' variant='secondary' onClick={handleOpenWorkspaceImport}>
             Import workspace
           </Button>
           <Button type='button' variant='secondary' onClick={handleExportWorkspace}>
@@ -142,8 +196,8 @@ export const ScenariosListPage = (): ReactElement => {
           <CardContent className='py-10 text-center'>
             <h2 className='text-xl font-semibold'>No scenarios yet</h2>
             <p className='mx-auto mt-2 max-w-2xl text-stone-600'>
-              Start with the guided wizard. It will capture the scenario, JSON Schema, test data, evaluation rubric, and initial
-              prompt.
+              Start with the guided wizard. It will capture the scenario, input fields, generated schema preview, test data, and
+              initial prompt.
             </p>
             <Link
               className='mt-6 inline-flex rounded-md bg-stone-950 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800'
@@ -154,36 +208,7 @@ export const ScenariosListPage = (): ReactElement => {
           </CardContent>
         </Card>
       ) : (
-        <div className='grid gap-4 md:grid-cols-2'>
-          {scenarios.map((scenario) => (
-            <Card key={scenario.id}>
-              <CardHeader>
-                <div className='flex items-start justify-between gap-4'>
-                  <div>
-                    <h2 className='font-semibold'>{scenario.title}</h2>
-                    <p className='mt-1 line-clamp-2 text-sm text-stone-600'>{scenario.description}</p>
-                  </div>
-                  <Badge>{scenario.testRecords.length} records</Badge>
-                </div>
-              </CardHeader>
-              <CardContent className='flex gap-3'>
-                <Link className='text-sm font-medium text-stone-950 underline' to={`/scenarios/${scenario.id}/prompts`}>
-                  Prompt versions
-                </Link>
-                <Link className='text-sm font-medium text-stone-950 underline' to={`/scenarios/${scenario.id}/compare`}>
-                  Compare
-                </Link>
-                <button
-                  className='text-sm font-medium text-stone-950 underline'
-                  type='button'
-                  onClick={() => handleExportScenario(scenario)}
-                >
-                  Export
-                </button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <div className='grid gap-4 md:grid-cols-2'>{scenarioCards}</div>
       )}
     </div>
   );

@@ -49,17 +49,20 @@ const CompareVersionsPage = lazy(
   },
 );
 
-export const AppRoutes = (): ReactElement | null =>
-  useRoutes([
-    {
-      element: <AppLayout />,
-      children: [
-        { index: true, element: <HomeRedirect /> },
-        { path: 'scenarios', element: <ScenariosListPage /> },
-        { path: 'scenarios/new', element: <ScenarioWizardPage /> },
-        { path: 'scenarios/:scenarioId/prompts', element: <PromptVersionsPage /> },
-        { path: 'scenarios/:scenarioId/prompts/:promptVersionId', element: <PromptDetailPage /> },
-        { path: 'scenarios/:scenarioId/compare', element: <CompareVersionsPage /> },
-      ],
-    },
-  ]);
+const routes = [
+  {
+    element: <AppLayout />,
+    children: [
+      { index: true, element: <HomeRedirect /> },
+      { path: 'scenarios', element: <ScenariosListPage /> },
+      { path: 'scenarios/new', element: <ScenarioWizardPage /> },
+      { path: 'scenarios/:scenarioId/prompts', element: <PromptVersionsPage /> },
+      { path: 'scenarios/:scenarioId/prompts/:promptVersionId', element: <PromptDetailPage /> },
+      { path: 'scenarios/:scenarioId/compare', element: <CompareVersionsPage /> },
+    ],
+  },
+];
+
+export const AppRoutes = (): ReactElement | null => {
+  return useRoutes(routes);
+};
