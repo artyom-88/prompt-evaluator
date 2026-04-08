@@ -1,5 +1,5 @@
 import type { ChangeEvent, ReactElement } from 'react';
-import { useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { Button } from '@/common/components/Button';
@@ -88,6 +88,105 @@ const getPromptStepErrors = (promptText: string): string[] => {
   return errors;
 };
 
+interface FieldDefinitionEditorProps {
+  fieldDefinition: ScenarioFieldDefinition;
+  onDelete: (fieldId: string) => void;
+  onDescriptionBlur: (fieldId: string) => void;
+  onDescriptionChange: (fieldId: string, value: string) => void;
+  onNameBlur: (fieldId: string) => void;
+  onNameChange: (fieldId: string, value: string) => void;
+  onTypeChange: (fieldId: string, value: ScenarioFieldDefinition['type']) => void;
+}
+
+const FieldDefinitionEditor = memo(
+  ({
+    fieldDefinition,
+    onDelete,
+    onDescriptionBlur,
+    onDescriptionChange,
+    onNameBlur,
+    onNameChange,
+    onTypeChange,
+  }: FieldDefinitionEditorProps): ReactElement => {
+    const handleNameBlur = useCallback((): void => {
+      onNameBlur(fieldDefinition.id);
+    }, [fieldDefinition.id, onNameBlur]);
+
+    const handleNameChange = useCallback(
+      (event: ChangeEvent<HTMLInputElement>): void => {
+        onNameChange(fieldDefinition.id, event.target.value);
+      },
+      [fieldDefinition.id, onNameChange],
+    );
+
+    const handleTypeChange = useCallback(
+      (event: ChangeEvent<HTMLSelectElement>): void => {
+        onTypeChange(fieldDefinition.id, event.target.value as ScenarioFieldDefinition['type']);
+      },
+      [fieldDefinition.id, onTypeChange],
+    );
+
+    const handleDescriptionBlur = useCallback((): void => {
+      onDescriptionBlur(fieldDefinition.id);
+    }, [fieldDefinition.id, onDescriptionBlur]);
+
+    const handleDescriptionChange = useCallback(
+      (event: ChangeEvent<HTMLInputElement>): void => {
+        onDescriptionChange(fieldDefinition.id, event.target.value);
+      },
+      [fieldDefinition.id, onDescriptionChange],
+    );
+
+    const handleDelete = useCallback((): void => {
+      onDelete(fieldDefinition.id);
+    }, [fieldDefinition.id, onDelete]);
+
+    return (
+      <div className='grid gap-4 rounded-lg border border-stone-200 p-4 md:grid-cols-[1.2fr_180px_1.4fr_auto]'>
+        <Field>
+          <Label htmlFor={`field-name-${fieldDefinition.id}`}>Name</Label>
+          <Input
+            id={`field-name-${fieldDefinition.id}`}
+            value={fieldDefinition.name}
+            onBlur={handleNameBlur}
+            onChange={handleNameChange}
+          />
+        </Field>
+        <Field>
+          <Label htmlFor={`field-type-${fieldDefinition.id}`}>Type</Label>
+          <select
+            id={`field-type-${fieldDefinition.id}`}
+            className='w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm'
+            value={fieldDefinition.type}
+            onChange={handleTypeChange}
+          >
+            <option value='string'>string</option>
+            <option value='number'>number</option>
+            <option value='integer'>integer</option>
+            <option value='boolean'>boolean</option>
+          </select>
+        </Field>
+        <Field>
+          <Label htmlFor={`field-description-${fieldDefinition.id}`}>Description</Label>
+          <Input
+            id={`field-description-${fieldDefinition.id}`}
+            value={fieldDefinition.description}
+            onBlur={handleDescriptionBlur}
+            onChange={handleDescriptionChange}
+          />
+        </Field>
+        <div className='flex items-end'>
+          <Button type='button' variant='secondary' onClick={handleDelete}>
+            Delete
+          </Button>
+        </div>
+      </div>
+    );
+  },
+);
+
+FieldDefinitionEditor.displayName = 'FieldDefinitionEditor';
+
 export const ScenarioWizardPage = (): ReactElement => {
   const navigate = useNavigate();
   const createScenario = useCreateScenario();
@@ -119,17 +218,24 @@ export const ScenarioWizardPage = (): ReactElement => {
   const promptStepErrors = useMemo(() => getPromptStepErrors(promptText), [promptText]);
   const availablePromptReferences = useMemo(() => getPromptReferenceFieldNames(fieldDefinitions), [fieldDefinitions]);
 
-  const stepErrors = [scenarioStepErrors, fieldsStepErrors, recordsStepErrors, promptStepErrors];
+  const stepErrors = useMemo(
+    () => [scenarioStepErrors, fieldsStepErrors, recordsStepErrors, promptStepErrors],
+    [fieldsStepErrors, promptStepErrors, recordsStepErrors, scenarioStepErrors],
+  );
+  const currentStepErrors = stepErrors[step];
 
-  const canVisitStep = (targetStep: number): boolean => {
-    if (targetStep <= step) {
-      return true;
-    }
+  const canVisitStep = useCallback(
+    (targetStep: number): boolean => {
+      if (targetStep <= step) {
+        return true;
+      }
 
-    return stepErrors.slice(0, targetStep).every((errors) => errors.length === 0);
-  };
+      return stepErrors.slice(0, targetStep).every((errors) => errors.length === 0);
+    },
+    [step, stepErrors],
+  );
 
-  const handleContinue = (): void => {
+  const handleContinue = useCallback((): void => {
     if (stepErrors[step].length > 0) {
       return;
     }
@@ -139,9 +245,9 @@ export const ScenarioWizardPage = (): ReactElement => {
     }
 
     setStep((currentStep) => Math.min(stepLabels.length - 1, currentStep + 1));
-  };
+  }, [fieldDefinitions, step, stepErrors]);
 
-  const handleGenerateRecords = async (): Promise<void> => {
+  const handleGenerateRecords = useCallback(async (): Promise<void> => {
     if (fieldsStepErrors.length > 0 || scenarioStepErrors.length > 0) {
       return;
     }
@@ -167,9 +273,9 @@ export const ScenarioWizardPage = (): ReactElement => {
     } finally {
       setIsGenerating(false);
     }
-  };
+  }, [description, fieldDefinitions, fieldsStepErrors.length, generationConstraints, recordCount, scenarioStepErrors.length]);
 
-  const handleImportRecords = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
+  const handleImportRecords = useCallback(async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const file = event.target.files?.[0];
     event.target.value = '';
 
@@ -185,9 +291,9 @@ export const ScenarioWizardPage = (): ReactElement => {
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : 'Failed to import test records JSON.');
     }
-  };
+  }, []);
 
-  const handleCreateScenario = async (): Promise<void> => {
+  const handleCreateScenario = useCallback(async (): Promise<void> => {
     if (
       promptStepErrors.length > 0 ||
       recordsStepErrors.length > 0 ||
@@ -230,9 +336,119 @@ export const ScenarioWizardPage = (): ReactElement => {
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : 'Failed to create scenario.');
     }
-  };
+  }, [
+    activeRecordSchemaText,
+    createScenario,
+    fieldDefinitions,
+    fieldsStepErrors.length,
+    generationConstraints,
+    navigate,
+    promptStepErrors.length,
+    promptText,
+    promptTitle,
+    recordCount,
+    recordsJson,
+    recordsStepErrors.length,
+    scenarioStepErrors.length,
+    title,
+    description,
+  ]);
 
-  const currentStepErrors = stepErrors[step];
+  const handleStepClick = useCallback((targetStep: number): void => {
+    setStep(targetStep);
+  }, []);
+
+  const handleBack = useCallback((): void => {
+    setStep((currentStep) => Math.max(0, currentStep - 1));
+  }, []);
+
+  const handleScenarioTitleBlur = useCallback((): void => {
+    setTitle((currentTitle) => currentTitle.trim());
+  }, []);
+
+  const handleScenarioTitleChange = useCallback((event: ChangeEvent<HTMLInputElement>): void => {
+    setTitle(event.target.value);
+  }, []);
+
+  const handleScenarioDescriptionBlur = useCallback((): void => {
+    setDescription((currentDescription) => currentDescription.trim());
+  }, []);
+
+  const handleScenarioDescriptionChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>): void => {
+    setDescription(event.target.value);
+  }, []);
+
+  const handleRecordCountChange = useCallback((event: ChangeEvent<HTMLInputElement>): void => {
+    setRecordCount(Number(event.target.value));
+  }, []);
+
+  const handleAddField = useCallback((): void => {
+    setFieldDefinitions((current) => [...current, createEmptyFieldDefinition()]);
+  }, []);
+
+  const handleFieldNameChange = useCallback((fieldId: string, value: string): void => {
+    setFieldDefinitions((current) =>
+      current.map((candidate) => (candidate.id === fieldId ? { ...candidate, name: value } : candidate)),
+    );
+  }, []);
+
+  const handleFieldNameBlur = useCallback((fieldId: string): void => {
+    setFieldDefinitions((current) =>
+      current.map((candidate) => (candidate.id === fieldId ? { ...candidate, name: candidate.name.trim() } : candidate)),
+    );
+  }, []);
+
+  const handleFieldTypeChange = useCallback((fieldId: string, value: ScenarioFieldDefinition['type']): void => {
+    setFieldDefinitions((current) =>
+      current.map((candidate) => (candidate.id === fieldId ? { ...candidate, type: value } : candidate)),
+    );
+  }, []);
+
+  const handleFieldDescriptionChange = useCallback((fieldId: string, value: string): void => {
+    setFieldDefinitions((current) =>
+      current.map((candidate) => (candidate.id === fieldId ? { ...candidate, description: value } : candidate)),
+    );
+  }, []);
+
+  const handleFieldDescriptionBlur = useCallback((fieldId: string): void => {
+    setFieldDefinitions((current) =>
+      current.map((candidate) =>
+        candidate.id === fieldId ? { ...candidate, description: candidate.description.trim() } : candidate,
+      ),
+    );
+  }, []);
+
+  const handleDeleteField = useCallback((fieldId: string): void => {
+    setFieldDefinitions((current) => current.filter((candidate) => candidate.id !== fieldId));
+  }, []);
+
+  const handleGenerationConstraintsBlur = useCallback((): void => {
+    setGenerationConstraints((currentConstraints) => currentConstraints.trim());
+  }, []);
+
+  const handleGenerationConstraintsChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>): void => {
+    setGenerationConstraints(event.target.value);
+  }, []);
+
+  const handleOpenRecordsImport = useCallback((): void => {
+    recordsImportRef.current?.click();
+  }, []);
+
+  const handleRecordsJsonChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>): void => {
+    setRecordsJson(event.target.value);
+  }, []);
+
+  const handlePromptTitleBlur = useCallback((): void => {
+    setPromptTitle((currentPromptTitle) => currentPromptTitle.trim());
+  }, []);
+
+  const handlePromptTitleChange = useCallback((event: ChangeEvent<HTMLInputElement>): void => {
+    setPromptTitle(event.target.value);
+  }, []);
+
+  const handlePromptTextChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>): void => {
+    setPromptText(event.target.value);
+  }, []);
 
   return (
     <div className='space-y-6'>
@@ -254,7 +470,7 @@ export const ScenarioWizardPage = (): ReactElement => {
                 }`}
                 disabled={!canVisitStep(index)}
                 type='button'
-                onClick={() => setStep(index)}
+                onClick={() => handleStepClick(index)}
               >
                 {index + 1}. {label}
               </button>
@@ -266,7 +482,7 @@ export const ScenarioWizardPage = (): ReactElement => {
             <>
               <Field>
                 <Label htmlFor='scenario-title'>Scenario title</Label>
-                <Input id='scenario-title' value={title} onChange={(event) => setTitle(event.target.value)} />
+                <Input id='scenario-title' value={title} onBlur={handleScenarioTitleBlur} onChange={handleScenarioTitleChange} />
                 <p className='text-xs text-stone-500'>Required. Used to identify the scenario in lists and reports.</p>
               </Field>
               <Field>
@@ -275,7 +491,8 @@ export const ScenarioWizardPage = (): ReactElement => {
                   id='scenario-description'
                   rows={8}
                   value={description}
-                  onChange={(event) => setDescription(event.target.value)}
+                  onBlur={handleScenarioDescriptionBlur}
+                  onChange={handleScenarioDescriptionChange}
                   placeholder='Describe what the prompt should solve and what a correct result looks like.'
                 />
                 <p className='text-xs text-stone-500'>Required. This drives test-data generation and evaluation.</p>
@@ -287,13 +504,7 @@ export const ScenarioWizardPage = (): ReactElement => {
             <>
               <Field>
                 <Label htmlFor='record-count'>Number of test records</Label>
-                <Input
-                  id='record-count'
-                  min={1}
-                  type='number'
-                  value={recordCount}
-                  onChange={(event) => setRecordCount(Number(event.target.value))}
-                />
+                <Input id='record-count' min={1} type='number' value={recordCount} onChange={handleRecordCountChange} />
               </Field>
               <div className='space-y-4'>
                 <div className='flex items-center justify-between gap-4'>
@@ -305,11 +516,7 @@ export const ScenarioWizardPage = (): ReactElement => {
                       ".
                     </p>
                   </div>
-                  <Button
-                    type='button'
-                    variant='secondary'
-                    onClick={() => setFieldDefinitions((current) => [...current, createEmptyFieldDefinition()])}
-                  >
+                  <Button type='button' variant='secondary' onClick={handleAddField}>
                     Add field
                   </Button>
                 </div>
@@ -321,74 +528,16 @@ export const ScenarioWizardPage = (): ReactElement => {
                 ) : (
                   <div className='space-y-4'>
                     {fieldDefinitions.map((fieldDefinition) => (
-                      <div
+                      <FieldDefinitionEditor
                         key={fieldDefinition.id}
-                        className='grid gap-4 rounded-lg border border-stone-200 p-4 md:grid-cols-[1.2fr_180px_1.4fr_auto]'
-                      >
-                        <Field>
-                          <Label htmlFor={`field-name-${fieldDefinition.id}`}>Name</Label>
-                          <Input
-                            id={`field-name-${fieldDefinition.id}`}
-                            value={fieldDefinition.name}
-                            onChange={(event) =>
-                              setFieldDefinitions((current) =>
-                                current.map((candidate) =>
-                                  candidate.id === fieldDefinition.id ? { ...candidate, name: event.target.value } : candidate,
-                                ),
-                              )
-                            }
-                          />
-                        </Field>
-                        <Field>
-                          <Label htmlFor={`field-type-${fieldDefinition.id}`}>Type</Label>
-                          <select
-                            id={`field-type-${fieldDefinition.id}`}
-                            className='w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm'
-                            value={fieldDefinition.type}
-                            onChange={(event) =>
-                              setFieldDefinitions((current) =>
-                                current.map((candidate) =>
-                                  candidate.id === fieldDefinition.id
-                                    ? { ...candidate, type: event.target.value as ScenarioFieldDefinition['type'] }
-                                    : candidate,
-                                ),
-                              )
-                            }
-                          >
-                            <option value='string'>string</option>
-                            <option value='number'>number</option>
-                            <option value='integer'>integer</option>
-                            <option value='boolean'>boolean</option>
-                          </select>
-                        </Field>
-                        <Field>
-                          <Label htmlFor={`field-description-${fieldDefinition.id}`}>Description</Label>
-                          <Input
-                            id={`field-description-${fieldDefinition.id}`}
-                            value={fieldDefinition.description}
-                            onChange={(event) =>
-                              setFieldDefinitions((current) =>
-                                current.map((candidate) =>
-                                  candidate.id === fieldDefinition.id
-                                    ? { ...candidate, description: event.target.value }
-                                    : candidate,
-                                ),
-                              )
-                            }
-                          />
-                        </Field>
-                        <div className='flex items-end'>
-                          <Button
-                            type='button'
-                            variant='secondary'
-                            onClick={() =>
-                              setFieldDefinitions((current) => current.filter((candidate) => candidate.id !== fieldDefinition.id))
-                            }
-                          >
-                            Delete
-                          </Button>
-                        </div>
-                      </div>
+                        fieldDefinition={fieldDefinition}
+                        onDelete={handleDeleteField}
+                        onDescriptionBlur={handleFieldDescriptionBlur}
+                        onDescriptionChange={handleFieldDescriptionChange}
+                        onNameBlur={handleFieldNameBlur}
+                        onNameChange={handleFieldNameChange}
+                        onTypeChange={handleFieldTypeChange}
+                      />
                     ))}
                   </div>
                 )}
@@ -400,7 +549,8 @@ export const ScenarioWizardPage = (): ReactElement => {
                   id='generation-constraints'
                   rows={4}
                   value={generationConstraints}
-                  onChange={(event) => setGenerationConstraints(event.target.value)}
+                  onBlur={handleGenerationConstraintsBlur}
+                  onChange={handleGenerationConstraintsChange}
                   placeholder='Optional: include edge cases, difficulty mix, or domain-specific constraints.'
                 />
               </Field>
@@ -439,7 +589,7 @@ export const ScenarioWizardPage = (): ReactElement => {
                     type='file'
                     onChange={handleImportRecords}
                   />
-                  <Button type='button' variant='secondary' onClick={() => recordsImportRef.current?.click()}>
+                  <Button type='button' variant='secondary' onClick={handleOpenRecordsImport}>
                     Import JSON
                   </Button>
                   <Button
@@ -453,12 +603,7 @@ export const ScenarioWizardPage = (): ReactElement => {
               </div>
               <Field>
                 <Label htmlFor='records-json'>Test records JSON</Label>
-                <Textarea
-                  id='records-json'
-                  rows={18}
-                  value={recordsJson}
-                  onChange={(event) => setRecordsJson(event.target.value)}
-                />
+                <Textarea id='records-json' rows={18} value={recordsJson} onChange={handleRecordsJsonChange} />
               </Field>
             </>
           ) : null}
@@ -467,11 +612,11 @@ export const ScenarioWizardPage = (): ReactElement => {
             <>
               <Field>
                 <Label htmlFor='prompt-title'>Prompt title (optional)</Label>
-                <Input id='prompt-title' value={promptTitle} onChange={(event) => setPromptTitle(event.target.value)} />
+                <Input id='prompt-title' value={promptTitle} onBlur={handlePromptTitleBlur} onChange={handlePromptTitleChange} />
               </Field>
               <Field>
                 <Label htmlFor='prompt-text'>Prompt text</Label>
-                <Textarea id='prompt-text' rows={18} value={promptText} onChange={(event) => setPromptText(event.target.value)} />
+                <Textarea id='prompt-text' rows={18} value={promptText} onChange={handlePromptTextChange} />
                 <p className='text-xs text-stone-500'>
                   Available references:{' '}
                   {availablePromptReferences.length > 0
@@ -494,12 +639,7 @@ export const ScenarioWizardPage = (): ReactElement => {
           ) : null}
 
           <div className='flex justify-between border-t border-stone-100 pt-4'>
-            <Button
-              disabled={step === 0}
-              type='button'
-              variant='secondary'
-              onClick={() => setStep((currentStep) => Math.max(0, currentStep - 1))}
-            >
+            <Button disabled={step === 0} type='button' variant='secondary' onClick={handleBack}>
               Back
             </Button>
             {step < stepLabels.length - 1 ? (

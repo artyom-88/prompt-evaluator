@@ -1,5 +1,5 @@
 import { atom, useAtomValue, useSetAtom } from 'jotai';
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import {
   createEvaluationRunInStore,
@@ -143,7 +143,7 @@ export const useCreateEvaluationRun = (): ((evaluationRun: EvaluationRun) => Eva
 export const useExportWorkspace = (): (() => WorkspaceBackup) => {
   const store = useAtomValue(workspaceStoreAtom);
 
-  return useMemo(() => () => exportWorkspaceStore(store), [store]);
+  return useCallback((): WorkspaceBackup => exportWorkspaceStore(store), [store]);
 };
 
 export const useImportWorkspace = (): ((payload: unknown) => void) => useSetAtom(importWorkspaceAtom);
@@ -151,22 +151,21 @@ export const useImportWorkspace = (): ((payload: unknown) => void) => useSetAtom
 export const useExportScenarioBundle = (): ((scenarioId: string) => ScenarioBundle) => {
   const store = useAtomValue(workspaceStoreAtom);
 
-  return useMemo(() => (scenarioId: string) => exportScenarioBundleFromStore(store, scenarioId), [store]);
+  return useCallback((scenarioId: string): ScenarioBundle => exportScenarioBundleFromStore(store, scenarioId), [store]);
 };
 
 export const useImportScenarioBundle = (): ((payload: unknown) => Scenario) => {
   const store = useAtomValue(workspaceStoreAtom);
   const replaceWorkspaceStore = useSetAtom(replaceWorkspaceStoreAtom);
 
-  return useMemo(
-    () =>
-      (payload: unknown): Scenario => {
-        const result = importScenarioBundleIntoStore(store, payload);
+  return useCallback(
+    (payload: unknown): Scenario => {
+      const result = importScenarioBundleIntoStore(store, payload);
 
-        replaceWorkspaceStore(result.store);
+      replaceWorkspaceStore(result.store);
 
-        return result.importedScenario;
-      },
+      return result.importedScenario;
+    },
     [replaceWorkspaceStore, store],
   );
 };

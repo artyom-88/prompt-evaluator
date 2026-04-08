@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react';
+import { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { Badge } from '@/common/components/Badge';
@@ -11,6 +12,9 @@ export const PromptVersionsPage = (): ReactElement => {
   const scenario = useScenario(scenarioId);
   const versions = usePromptVersions(scenarioId);
   const runs = useEvaluationRuns(scenarioId);
+  const latestRunsByPromptVersionId = useMemo(() => {
+    return new Map(runs.map((run) => [run.promptVersionId, run] as const));
+  }, [runs]);
 
   if (!scenario) {
     return <p className='text-sm text-stone-600'>Scenario not found.</p>;
@@ -33,7 +37,7 @@ export const PromptVersionsPage = (): ReactElement => {
 
       <div className='grid gap-4'>
         {versions.map((version) => {
-          const latestRun = runs.find((run) => run.promptVersionId === version.id);
+          const latestRun = latestRunsByPromptVersionId.get(version.id);
 
           return (
             <Card key={version.id}>

@@ -1,5 +1,5 @@
-import type { ReactElement } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import type { ChangeEvent, ReactElement } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { Button } from '@/common/components/Button';
@@ -42,12 +42,9 @@ export const PromptDetailPage = (): ReactElement => {
     }
   }, [promptVersion]);
 
-  const availablePromptReferences = useMemo(
-    () => (scenario ? getPromptReferenceFieldNames(scenario.fieldDefinitions) : []),
-    [scenario],
-  );
+  const availablePromptReferences = scenario ? getPromptReferenceFieldNames(scenario.fieldDefinitions) : [];
 
-  const handleRunEvaluation = async (): Promise<void> => {
+  const handleRunEvaluation = useCallback(async (): Promise<void> => {
     if (!scenario || !promptVersion) {
       return;
     }
@@ -81,13 +78,13 @@ export const PromptDetailPage = (): ReactElement => {
       setActiveController(null);
       setProgress(null);
     }
-  };
+  }, [createEvaluationRun, promptVersion, scenario]);
 
-  const handleCancelEvaluation = (): void => {
+  const handleCancelEvaluation = useCallback((): void => {
     activeController?.abort(new DOMException('Evaluation canceled by the user.', 'AbortError'));
-  };
+  }, [activeController]);
 
-  const handleCreateVersion = async (): Promise<void> => {
+  const handleCreateVersion = useCallback(async (): Promise<void> => {
     if (!scenario || !promptVersion) {
       return;
     }
@@ -110,14 +107,29 @@ export const PromptDetailPage = (): ReactElement => {
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : 'Failed to create prompt version.');
     }
-  };
+  }, [createPromptVersion, navigate, notes, promptText, promptVersion, scenario, title]);
+
+  const latestRun = runs[0];
+  const references = findDataReferences(promptText);
+  const handleTitleBlur = useCallback((): void => {
+    setTitle((currentTitle) => currentTitle.trim());
+  }, []);
+  const handleTitleChange = useCallback((event: ChangeEvent<HTMLInputElement>): void => {
+    setTitle(event.target.value);
+  }, []);
+  const handlePromptTextChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>): void => {
+    setPromptText(event.target.value);
+  }, []);
+  const handleNotesBlur = useCallback((): void => {
+    setNotes((currentNotes) => currentNotes.trim());
+  }, []);
+  const handleNotesChange = useCallback((event: ChangeEvent<HTMLInputElement>): void => {
+    setNotes(event.target.value);
+  }, []);
 
   if (!scenario || !promptVersion) {
     return <p className='text-sm text-stone-600'>Prompt version not found.</p>;
   }
-
-  const latestRun = runs[0];
-  const references = findDataReferences(promptText);
 
   return (
     <div className='space-y-6'>
@@ -177,11 +189,11 @@ export const PromptDetailPage = (): ReactElement => {
         <CardContent className='space-y-4'>
           <Field>
             <Label htmlFor='version-title'>Version title</Label>
-            <Input id='version-title' value={title} onChange={(event) => setTitle(event.target.value)} />
+            <Input id='version-title' value={title} onBlur={handleTitleBlur} onChange={handleTitleChange} />
           </Field>
           <Field>
             <Label htmlFor='prompt-text'>Prompt text</Label>
-            <Textarea id='prompt-text' rows={16} value={promptText} onChange={(event) => setPromptText(event.target.value)} />
+            <Textarea id='prompt-text' rows={16} value={promptText} onChange={handlePromptTextChange} />
             <p className='text-xs text-stone-500'>
               Available references:{' '}
               {availablePromptReferences.length > 0
@@ -196,7 +208,7 @@ export const PromptDetailPage = (): ReactElement => {
           </Field>
           <Field>
             <Label htmlFor='version-notes'>Version notes</Label>
-            <Input id='version-notes' value={notes} onChange={(event) => setNotes(event.target.value)} />
+            <Input id='version-notes' value={notes} onBlur={handleNotesBlur} onChange={handleNotesChange} />
           </Field>
           <Button disabled={isRunning} type='button' variant='secondary' onClick={handleCreateVersion}>
             Save as new version
