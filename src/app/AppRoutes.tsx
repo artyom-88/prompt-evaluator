@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { useRoutes } from 'react-router-dom';
 
 import { AppLayout } from '@/common/components/layout/AppLayout';
@@ -8,8 +9,8 @@ import { ScenariosListPage } from '@/features/scenarios/ScenariosListPage';
 import { ScenarioWizardPage } from '@/features/scenarios/ScenarioWizardPage';
 import { HomeRedirect } from '@/features/workspace/HomeRedirect';
 
-export function AppRoutes() {
-  return useRoutes([
+export const AppRoutes = (): ReactElement | null =>
+  useRoutes([
     {
       element: <AppLayout />,
       children: [
@@ -22,4 +23,3 @@ export function AppRoutes() {
       ],
     },
   ]);
-}

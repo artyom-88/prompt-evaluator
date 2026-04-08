@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { AnthropicTextClient } from '@/features/anthropic/anthropicClient';
+import type { AnthropicTextClient } from '@/features/anthropic/anthropicTypes';
 import { generateTestRecords, validateTestData } from '@/features/test-data/testDataGeneration';
 
 describe('test data validation', () => {

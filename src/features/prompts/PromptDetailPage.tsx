@@ -1,7 +1,7 @@
+import type { ReactElement } from 'react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
-import { usePromptEvaluator } from '@/app/PromptEvaluatorProvider';
 import { Button } from '@/common/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/common/components/ui/Card';
 import { Field, Input, Label, Textarea } from '@/common/components/ui/Form';
@@ -9,12 +9,12 @@ import { createAnthropicTextClient } from '@/features/anthropic/anthropicClient'
 import { evaluatePromptVersion } from '@/features/evaluations/evaluationEngine';
 import { findDataReferences } from '@/features/prompts/promptTemplate';
 import { ReportTable } from '@/features/reports/ReportTable';
-import type { EvaluationRun, PromptVersion, Scenario } from '@/features/workspace/workspaceStore';
+import { workspaceApi } from '@/features/workspace/workspaceApi';
+import type { EvaluationRun, PromptVersion, Scenario } from '@/features/workspace/workspaceTypes';
 
-export function PromptDetailPage() {
+export const PromptDetailPage = (): ReactElement => {
   const { scenarioId = '', promptVersionId = '' } = useParams();
   const navigate = useNavigate();
-  const { api, refresh } = usePromptEvaluator();
   const [scenario, setScenario] = useState<Scenario>();
   const [promptVersion, setPromptVersion] = useState<PromptVersion>();
   const [runs, setRuns] = useState<EvaluationRun[]>([]);
@@ -22,13 +22,15 @@ export function PromptDetailPage() {
   const [promptText, setPromptText] = useState('');
   const [notes, setNotes] = useState('');
   const [isRunning, setIsRunning] = useState(false);
+  const [activeController, setActiveController] = useState<AbortController | null>(null);
+  const [progress, setProgress] = useState<{ completed: number; total: number; currentRecordIndex?: number } | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
     void Promise.all([
-      api.getScenario(scenarioId),
-      api.getPromptVersion(promptVersionId),
-      api.listEvaluationRunsForPrompt(promptVersionId),
+      workspaceApi.getScenario(scenarioId),
+      workspaceApi.getPromptVersion(promptVersionId),
+      workspaceApi.listEvaluationRunsForPrompt(promptVersionId),
     ]).then(([nextScenario, nextPromptVersion, nextRuns]) => {
       setScenario(nextScenario);
       setPromptVersion(nextPromptVersion);
@@ -39,48 +41,68 @@ export function PromptDetailPage() {
         setNotes(nextPromptVersion.notes);
       }
     });
-  }, [api, promptVersionId, scenarioId]);
+  }, [promptVersionId, scenarioId]);
 
-  async function handleRunEvaluation() {
+  const handleRunEvaluation = async (): Promise<void> => {
     if (!scenario || !promptVersion) {
       return;
     }
 
     setError('');
     setIsRunning(true);
+    const controller = new AbortController();
+    setActiveController(controller);
+    setProgress({ completed: 0, total: scenario.testRecords.length });
+
     try {
       const client = createAnthropicTextClient();
-      const run = await evaluatePromptVersion({ client, scenario, promptVersion });
-      await api.createEvaluationRun(run);
-      setRuns([run, ...runs]);
-      refresh();
+      const run = await evaluatePromptVersion({
+        client,
+        scenario,
+        promptVersion,
+        signal: controller.signal,
+        onProgress: setProgress,
+      });
+      await workspaceApi.createEvaluationRun(run);
+      setRuns((currentRuns) => [run, ...currentRuns]);
     } catch (runError) {
-      setError(runError instanceof Error ? runError.message : 'Failed to run evaluation.');
+      setError(
+        runError instanceof DOMException && runError.name === 'AbortError'
+          ? 'Evaluation canceled.'
+          : runError instanceof Error
+            ? runError.message
+            : 'Failed to run evaluation.',
+      );
     } finally {
       setIsRunning(false);
+      setActiveController(null);
+      setProgress(null);
     }
-  }
+  };
 
-  async function handleCreateVersion() {
+  const handleCancelEvaluation = (): void => {
+    activeController?.abort(new DOMException('Evaluation canceled by the user.', 'AbortError'));
+  };
+
+  const handleCreateVersion = async (): Promise<void> => {
     if (!scenario || !promptVersion) {
       return;
     }
 
     setError('');
     try {
-      const nextVersion = await api.createPromptVersion({
+      const nextVersion = await workspaceApi.createPromptVersion({
         scenarioId: scenario.id,
         title: title.trim() || promptVersion.title,
         promptText,
         notes,
         parentVersionId: promptVersion.id,
       });
-      refresh();
       navigate(`/scenarios/${scenario.id}/prompts/${nextVersion.id}`);
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : 'Failed to create prompt version.');
     }
-  }
+  };
 
   if (!scenario || !promptVersion) {
     return <p className='text-sm text-stone-600'>Prompt version not found.</p>;
@@ -101,12 +123,43 @@ export function PromptDetailPage() {
           </h1>
           <p className='mt-2 text-stone-600'>{scenario.title}</p>
         </div>
-        <Button disabled={isRunning} type='button' onClick={handleRunEvaluation}>
-          {isRunning ? 'Running...' : 'Run evaluation'}
-        </Button>
+        <div className='flex gap-3'>
+          {isRunning ? (
+            <Button type='button' variant='secondary' onClick={handleCancelEvaluation}>
+              Cancel
+            </Button>
+          ) : null}
+          <Button disabled={isRunning} type='button' onClick={handleRunEvaluation}>
+            {isRunning ? 'Running...' : 'Run evaluation'}
+          </Button>
+        </div>
       </div>
 
       {error ? <div className='rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800'>{error}</div> : null}
+
+      {isRunning && progress ? (
+        <Card>
+          <CardContent className='space-y-3'>
+            <div className='flex items-center justify-between gap-4'>
+              <p className='text-sm font-medium text-stone-900'>Evaluation in progress</p>
+              <p className='text-sm text-stone-600'>
+                {progress.completed} / {progress.total} completed
+              </p>
+            </div>
+            <div className='h-2 overflow-hidden rounded-full bg-stone-200'>
+              <div
+                className='h-full rounded-full bg-stone-900 transition-all'
+                style={{ width: `${(progress.completed / Math.max(1, progress.total)) * 100}%` }}
+              />
+            </div>
+            <p className='text-sm text-stone-600'>
+              {progress.completed >= progress.total
+                ? 'Finalizing evaluation report...'
+                : `Running test case ${(progress.currentRecordIndex ?? progress.completed) + 1} of ${progress.total}.`}
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -130,7 +183,7 @@ export function PromptDetailPage() {
             <Label htmlFor='version-notes'>Version notes</Label>
             <Input id='version-notes' value={notes} onChange={(event) => setNotes(event.target.value)} />
           </Field>
-          <Button type='button' variant='secondary' onClick={handleCreateVersion}>
+          <Button disabled={isRunning} type='button' variant='secondary' onClick={handleCreateVersion}>
             Save as new version
           </Button>
         </CardContent>
@@ -147,4 +200,4 @@ export function PromptDetailPage() {
       )}
     </div>
   );
-}
+};

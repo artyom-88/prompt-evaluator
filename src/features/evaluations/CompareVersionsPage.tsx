@@ -1,19 +1,18 @@
+import type { ReactElement } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
-import { usePromptEvaluator } from '@/app/PromptEvaluatorProvider';
 import { Card, CardContent, CardHeader } from '@/common/components/ui/Card';
 import { Label } from '@/common/components/ui/Form';
 import { formatPercent, formatScore } from '@/common/utils';
-import type { EvaluationRun, PromptVersion, Scenario } from '@/features/workspace/workspaceStore';
+import { workspaceApi } from '@/features/workspace/workspaceApi';
+import type { EvaluationRun, PromptVersion, Scenario } from '@/features/workspace/workspaceTypes';
 
-function latestRunForVersion(runs: EvaluationRun[], versionId: string) {
-  return runs.find((run) => run.promptVersionId === versionId);
-}
+const latestRunForVersion = (runs: EvaluationRun[], versionId: string): EvaluationRun | undefined =>
+  runs.find((run) => run.promptVersionId === versionId);
 
-export function CompareVersionsPage() {
+export const CompareVersionsPage = (): ReactElement => {
   const { scenarioId = '' } = useParams();
-  const { api } = usePromptEvaluator();
   const [scenario, setScenario] = useState<Scenario>();
   const [versions, setVersions] = useState<PromptVersion[]>([]);
   const [runs, setRuns] = useState<EvaluationRun[]>([]);
@@ -21,16 +20,18 @@ export function CompareVersionsPage() {
   const [rightVersionId, setRightVersionId] = useState('');
 
   useEffect(() => {
-    void Promise.all([api.getScenario(scenarioId), api.listPromptVersions(scenarioId), api.listEvaluationRuns(scenarioId)]).then(
-      ([nextScenario, nextVersions, nextRuns]) => {
-        setScenario(nextScenario);
-        setVersions(nextVersions);
-        setRuns(nextRuns);
-        setLeftVersionId((current) => current || nextVersions[1]?.id || nextVersions[0]?.id || '');
-        setRightVersionId((current) => current || nextVersions[0]?.id || '');
-      },
-    );
-  }, [api, scenarioId]);
+    void Promise.all([
+      workspaceApi.getScenario(scenarioId),
+      workspaceApi.listPromptVersions(scenarioId),
+      workspaceApi.listEvaluationRuns(scenarioId),
+    ]).then(([nextScenario, nextVersions, nextRuns]) => {
+      setScenario(nextScenario);
+      setVersions(nextVersions);
+      setRuns(nextRuns);
+      setLeftVersionId((current) => current || nextVersions[1]?.id || nextVersions[0]?.id || '');
+      setRightVersionId((current) => current || nextVersions[0]?.id || '');
+    });
+  }, [scenarioId]);
 
   const leftRun = useMemo(() => latestRunForVersion(runs, leftVersionId), [leftVersionId, runs]);
   const rightRun = useMemo(() => latestRunForVersion(runs, rightVersionId), [rightVersionId, runs]);
@@ -143,4 +144,4 @@ export function CompareVersionsPage() {
       )}
     </div>
   );
-}
+};

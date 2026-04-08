@@ -1,6 +1,6 @@
-import type { HTMLAttributes } from 'react';
+import type { HTMLAttributes, ReactElement } from 'react';
 
-export function Badge({ className, ...props }: HTMLAttributes<HTMLSpanElement>) {
+export const Badge = ({ className, ...props }: HTMLAttributes<HTMLSpanElement>): ReactElement => {
   return (
     <span
       className={['inline-flex rounded-full bg-stone-100 px-2.5 py-1 text-xs font-medium text-stone-700', className]
@@ -9,4 +9,4 @@ export function Badge({ className, ...props }: HTMLAttributes<HTMLSpanElement>) 
       {...props}
     />
   );
-}
+};

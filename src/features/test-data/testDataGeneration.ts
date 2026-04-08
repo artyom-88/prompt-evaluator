@@ -1,17 +1,12 @@
 import Ajv from 'ajv';
 
-import type { AnthropicClientTool, AnthropicTextClient } from '@/features/anthropic/anthropicClient';
-import type { JsonObject } from '@/features/workspace/workspaceStore';
+import type { AnthropicClientTool, AnthropicTextClient } from '@/features/anthropic/anthropicTypes';
+import type { TestDataValidationResult } from '@/features/test-data/testDataTypes';
+import type { JsonObject } from '@/features/workspace/workspaceTypes';
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 
-export interface TestDataValidationResult {
-  valid: boolean;
-  recordCount: number;
-  errors: string[];
-}
-
-export function extractJson(text: string): unknown {
+export const extractJson = (text: string): unknown => {
   const trimmed = text.trim();
 
   try {
@@ -36,17 +31,16 @@ export function extractJson(text: string): unknown {
 
     throw new Error('Response did not contain valid JSON.');
   }
-}
+};
 
-function isJsonObject(value: unknown): value is JsonObject {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
+const isJsonObject = (value: unknown): value is JsonObject =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
-export function validateTestData(input: {
+export const validateTestData = (input: {
   candidate: unknown;
   recordSchemaText: string;
   expectedRecordCount: number;
-}): TestDataValidationResult {
+}): TestDataValidationResult => {
   const errors: string[] = [];
   const schema = JSON.parse(input.recordSchemaText);
   const validate = ajv.compile(schema);
@@ -82,13 +76,13 @@ export function validateTestData(input: {
     recordCount: input.candidate.length,
     errors,
   };
-}
+};
 
-function assertValidTestRecords(input: {
+const assertValidTestRecords = (input: {
   candidate: unknown;
   recordSchemaText: string;
   expectedRecordCount: number;
-}): JsonObject[] {
+}): JsonObject[] => {
   const validation = validateTestData(input);
 
   if (!validation.valid) {
@@ -96,13 +90,13 @@ function assertValidTestRecords(input: {
   }
 
   return input.candidate as JsonObject[];
-}
+};
 
-function createValidateTestDataTool(input: {
+const createValidateTestDataTool = (input: {
   recordSchemaText: string;
   expectedRecordCount: number;
   maxValidationAttempts: number;
-}): AnthropicClientTool {
+}): AnthropicClientTool => {
   let validationAttemptCount = 0;
 
   return {
@@ -120,7 +114,7 @@ function createValidateTestDataTool(input: {
       required: ['records'],
       additionalProperties: false,
     },
-    run(toolInput) {
+    run(toolInput): string {
       validationAttemptCount += 1;
       const records = isJsonObject(toolInput) ? toolInput.records : undefined;
       const validation = validateTestData({
@@ -138,15 +132,15 @@ function createValidateTestDataTool(input: {
       return JSON.stringify(validation);
     },
   };
-}
+};
 
-export async function generateTestRecords(input: {
+export const generateTestRecords = async (input: {
   client: AnthropicTextClient;
   scenarioDescription: string;
   recordSchemaText: string;
   recordCount: number;
   generationConstraints: string;
-}): Promise<JsonObject[]> {
+}): Promise<JsonObject[]> => {
   JSON.parse(input.recordSchemaText);
   const response = await input.client.completeWithTools({
     maxTokens: 3000,
@@ -183,4 +177,4 @@ export async function generateTestRecords(input: {
     recordSchemaText: input.recordSchemaText,
     expectedRecordCount: input.recordCount,
   });
-}
+};

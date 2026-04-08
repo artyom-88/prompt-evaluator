@@ -1,14 +1,15 @@
+import type { ReactElement } from 'react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { usePromptEvaluator } from '@/app/PromptEvaluatorProvider';
 import { Button } from '@/common/components/ui/Button';
 import { Card, CardContent, CardHeader } from '@/common/components/ui/Card';
 import { Field, Input, Label, Textarea } from '@/common/components/ui/Form';
 import { createAnthropicTextClient } from '@/features/anthropic/anthropicClient';
 import { asStringList } from '@/features/evaluations/evaluationEngine';
 import { generateTestRecords } from '@/features/test-data/testDataGeneration';
-import type { EvaluationRubric, JsonObject } from '@/features/workspace/workspaceStore';
+import { workspaceApi } from '@/features/workspace/workspaceApi';
+import type { EvaluationRubric, JsonObject } from '@/features/workspace/workspaceTypes';
 
 const defaultSchema = JSON.stringify(
   {
@@ -32,18 +33,17 @@ Identify the key topics in this content and return only a JSON array of strings.
 {data.content}
 </content>`;
 
-function parseRecords(recordsJson: string): JsonObject[] {
+const parseRecords = (recordsJson: string): JsonObject[] => {
   const parsed = JSON.parse(recordsJson);
   if (!Array.isArray(parsed)) {
     throw new Error('Test records must be a JSON array.');
   }
 
   return parsed as JsonObject[];
-}
+};
 
-export function ScenarioWizardPage() {
+export const ScenarioWizardPage = (): ReactElement => {
   const navigate = useNavigate();
-  const { api, refresh } = usePromptEvaluator();
   const [step, setStep] = useState(0);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -71,7 +71,7 @@ export function ScenarioWizardPage() {
     passScore,
   };
 
-  async function handleGenerateRecords() {
+  const handleGenerateRecords = async (): Promise<void> => {
     setError('');
     setIsGenerating(true);
     try {
@@ -91,13 +91,13 @@ export function ScenarioWizardPage() {
     } finally {
       setIsGenerating(false);
     }
-  }
+  };
 
-  async function handleCreateScenario() {
+  const handleCreateScenario = async (): Promise<void> => {
     setError('');
     try {
       const testRecords = parseRecords(recordsJson);
-      const { scenario } = await api.createScenario({
+      const { scenario } = await workspaceApi.createScenario({
         title: title.trim() || 'Untitled scenario',
         description,
         recordCount,
@@ -108,12 +108,11 @@ export function ScenarioWizardPage() {
         initialPromptTitle: promptTitle.trim() || 'Initial prompt',
         initialPromptText: promptText,
       });
-      refresh();
       navigate(`/scenarios/${scenario.id}/prompts`);
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : 'Failed to create scenario.');
     }
-  }
+  };
 
   return (
     <div className='space-y-6'>
@@ -294,4 +293,4 @@ export function ScenarioWizardPage() {
       </Card>
     </div>
   );
-}
+};
