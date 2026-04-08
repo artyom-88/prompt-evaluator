@@ -3,7 +3,7 @@ import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { RouteErrorBoundary } from '@/common/components/layout/RouteErrorBoundary';
+import { RouteErrorBoundary } from '@/app/RouteErrorBoundary';
 
 const ThrowingComponent = (): ReactElement => {
   throw new Error('Boom');

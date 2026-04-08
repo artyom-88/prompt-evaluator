@@ -2,9 +2,9 @@ import type { ReactElement } from 'react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
-import { Button } from '@/common/components/ui/Button';
-import { Card, CardContent, CardHeader } from '@/common/components/ui/Card';
-import { Field, Input, Label, Textarea } from '@/common/components/ui/Form';
+import { Button } from '@/common/components/Button';
+import { Card, CardContent, CardHeader } from '@/common/components/Card';
+import { Field, Input, Label, Textarea } from '@/common/components/Form';
 import { createAnthropicTextClient } from '@/features/anthropic/anthropicClient';
 import { evaluatePromptVersion } from '@/features/evaluations/evaluationEngine';
 import { findDataReferences } from '@/features/prompts/promptTemplate';

@@ -1,7 +1,7 @@
 import { Component, type ReactElement, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
-import { Card, CardContent, CardHeader } from '@/common/components/ui/Card';
+import { Card, CardContent, CardHeader } from '@/common/components/Card';
 
 interface RouteErrorBoundaryProps {
   children: ReactNode;

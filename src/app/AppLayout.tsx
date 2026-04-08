@@ -1,7 +1,11 @@
-import type { ReactElement } from 'react';
+import { type ReactElement, Suspense } from 'react';
 import { Link, Outlet } from 'react-router-dom';
 
-import { RouteErrorBoundary } from '@/common/components/layout/RouteErrorBoundary';
+import { RouteErrorBoundary } from '@/app/RouteErrorBoundary';
+
+const routeLoadingFallback: ReactElement = (
+  <div className='rounded-lg border border-stone-200 bg-white px-4 py-6 text-sm text-stone-600'>Loading page...</div>
+);
 
 export const AppLayout = (): ReactElement => (
   <div className='min-h-screen bg-stone-100 text-stone-900'>
@@ -22,7 +26,9 @@ export const AppLayout = (): ReactElement => (
     </header>
     <main className='mx-auto max-w-7xl px-6 py-8'>
       <RouteErrorBoundary>
-        <Outlet />
+        <Suspense fallback={routeLoadingFallback}>
+          <Outlet />
+        </Suspense>
       </RouteErrorBoundary>
     </main>
   </div>

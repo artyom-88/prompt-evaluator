@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { Card, CardContent } from '@/common/components/ui/Card';
+import { Card, CardContent } from '@/common/components/Card';
 import { formatPercent, formatScore } from '@/common/utils';
 import type { EvaluationRun } from '@/features/workspace/workspaceTypes';
 

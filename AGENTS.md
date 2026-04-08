@@ -12,6 +12,9 @@ This file is for AI coding agents. For human-facing setup, commands, and archite
 ## Source Organization
 
 - Keep route configuration in `src/app/AppRoutes.tsx`.
+- Keep app shell concerns such as `AppLayout` and `RouteErrorBoundary` in `src/app/`.
+- Prefer route-based dynamic lazy imports in `src/app/AppRoutes.tsx` for page-level code splitting.
+- Keep reusable shared UI primitives directly under `src/common/components/`.
 - Keep shared domain types in feature `*Types.ts` files. For example, workspace-wide domain types belong in `src/features/workspace/workspaceTypes.ts`.
 - Keep direct workspace API access in `src/features/workspace/workspaceApi.ts` and localStorage persistence in `src/features/workspace/workspaceStore.ts`.
 - Keep feature logic in the owning folder under `src/features/`: `anthropic`, `evaluations`, `prompts`, `reports`, `scenarios`, `test-data`, or `workspace`.

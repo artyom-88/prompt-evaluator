@@ -2,8 +2,8 @@ import type { ReactElement } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
-import { Card, CardContent, CardHeader } from '@/common/components/ui/Card';
-import { Label } from '@/common/components/ui/Form';
+import { Card, CardContent, CardHeader } from '@/common/components/Card';
+import { Label } from '@/common/components/Form';
 import { formatPercent, formatScore } from '@/common/utils';
 import { workspaceApi } from '@/features/workspace/workspaceApi';
 import type { EvaluationRun, PromptVersion, Scenario } from '@/features/workspace/workspaceTypes';

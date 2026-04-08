@@ -1,13 +1,53 @@
-import type { ReactElement } from 'react';
+import { lazy, type ReactElement } from 'react';
 import { useRoutes } from 'react-router-dom';
 
-import { AppLayout } from '@/common/components/layout/AppLayout';
-import { CompareVersionsPage } from '@/features/evaluations/CompareVersionsPage';
-import { PromptDetailPage } from '@/features/prompts/PromptDetailPage';
-import { PromptVersionsPage } from '@/features/prompts/PromptVersionsPage';
-import { ScenariosListPage } from '@/features/scenarios/ScenariosListPage';
-import { ScenarioWizardPage } from '@/features/scenarios/ScenarioWizardPage';
-import { HomeRedirect } from '@/features/workspace/HomeRedirect';
+import { AppLayout } from '@/app/AppLayout';
+
+const HomeRedirect = lazy(async (): Promise<{ default: typeof import('@/features/workspace/HomeRedirect').HomeRedirect }> => {
+  const module = await import('@/features/workspace/HomeRedirect');
+
+  return { default: module.HomeRedirect };
+});
+
+const ScenariosListPage = lazy(
+  async (): Promise<{ default: typeof import('@/features/scenarios/ScenariosListPage').ScenariosListPage }> => {
+    const module = await import('@/features/scenarios/ScenariosListPage');
+
+    return { default: module.ScenariosListPage };
+  },
+);
+
+const ScenarioWizardPage = lazy(
+  async (): Promise<{ default: typeof import('@/features/scenarios/ScenarioWizardPage').ScenarioWizardPage }> => {
+    const module = await import('@/features/scenarios/ScenarioWizardPage');
+
+    return { default: module.ScenarioWizardPage };
+  },
+);
+
+const PromptVersionsPage = lazy(
+  async (): Promise<{ default: typeof import('@/features/prompts/PromptVersionsPage').PromptVersionsPage }> => {
+    const module = await import('@/features/prompts/PromptVersionsPage');
+
+    return { default: module.PromptVersionsPage };
+  },
+);
+
+const PromptDetailPage = lazy(
+  async (): Promise<{ default: typeof import('@/features/prompts/PromptDetailPage').PromptDetailPage }> => {
+    const module = await import('@/features/prompts/PromptDetailPage');
+
+    return { default: module.PromptDetailPage };
+  },
+);
+
+const CompareVersionsPage = lazy(
+  async (): Promise<{ default: typeof import('@/features/evaluations/CompareVersionsPage').CompareVersionsPage }> => {
+    const module = await import('@/features/evaluations/CompareVersionsPage');
+
+    return { default: module.CompareVersionsPage };
+  },
+);
 
 export const AppRoutes = (): ReactElement | null =>
   useRoutes([

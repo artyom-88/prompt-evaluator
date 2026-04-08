@@ -2,9 +2,9 @@ import type { ChangeEvent, ReactElement } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-import { Badge } from '@/common/components/ui/Badge';
-import { Button } from '@/common/components/ui/Button';
-import { Card, CardContent, CardHeader } from '@/common/components/ui/Card';
+import { Badge } from '@/common/components/Badge';
+import { Button } from '@/common/components/Button';
+import { Card, CardContent, CardHeader } from '@/common/components/Card';
 import { workspaceApi } from '@/features/workspace/workspaceApi';
 import type { Scenario } from '@/features/workspace/workspaceTypes';
 

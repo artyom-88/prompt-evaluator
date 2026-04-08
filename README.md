@@ -61,8 +61,8 @@ Husky installs Git hooks during `pnpm install` through the `prepare` script.
 
 ## Project Structure
 
-- `src/app/` contains the app entry route configuration and shell wiring.
-- `src/common/` contains reusable layout, UI primitives, and shared utilities.
+- `src/app/` contains route configuration, the app shell, and route-level error/loading boundaries.
+- `src/common/` contains shared UI primitives in `src/common/components/` and general utilities.
 - `src/features/workspace/` owns shared domain types in `workspaceTypes.ts`, the directly imported `workspaceApi.ts`, and localStorage persistence in `workspaceStore.ts`.
 - `src/features/scenarios/` owns scenario list and scenario creation UI.
 - `src/features/prompts/` owns prompt version UI and prompt templating helpers.
@@ -71,7 +71,7 @@ Husky installs Git hooks during `pnpm install` through the `prepare` script.
 - `src/features/reports/` owns report rendering components.
 - `src/features/anthropic/` owns Anthropic API client integration and related client types.
 
-Route paths are configured centrally in `src/app/AppRoutes.tsx`; feature folders do not mirror route nesting.
+Route paths are configured centrally in `src/app/AppRoutes.tsx`; feature folders do not mirror route nesting. Route pages are loaded with dynamic lazy imports, and `src/app/AppLayout.tsx` provides the shared Suspense fallback.
 
 ## Test Data Validation
 
